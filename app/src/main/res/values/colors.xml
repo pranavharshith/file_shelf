@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher -->
+    <color name="ic_launcher_background">#007AFF</color>
+
+    <!-- Surfaces -->
+    <color name="colorBackground">#F2F2F7</color>
+    <color name="colorSurface">#FFFFFF</color>
+    <color name="colorGlass">#CCFFFFFF</color>
+    <color name="colorGlassBorder">#80FFFFFF</color>
+
+    <!-- Tint — system blue only -->
+    <color name="colorTint">#007AFF</color>
+    <color name="colorTintSubtle">#26007AFF</color>
+    <color name="colorBubbleGlow">#1A007AFF</color>
+    <color name="colorBubbleFill">#E6FFFFFF</color>
+
+    <!-- Text — Apple system label colours -->
+    <color name="colorTextPrimary">#1C1C1E</color>
+    <color name="colorTextSecondary">#993C3C43</color>
+    <color name="colorTextTertiary">#4D3C3C43</color>
+
+    <!-- Separator -->
+    <color name="colorSeparator">#493C3C43</color>
+
+    <!-- Destructive -->
+    <color name="colorDestructive">#FF3B30</color>
+    <color name="colorDestructiveSubtle">#26FF3B30</color>
+
+    <!-- File-type chip tints (5 % opacity backgrounds) -->
+    <color name="colorChipPdf">#26FF3B30</color>
+    <color name="colorChipImage">#2634C759</color>
+    <color name="colorChipDoc">#26007AFF</color>
+    <color name="colorChipVideo">#26FF9500</color>
+    <color name="colorChipAudio">#26AF52DE</color>
+    <color name="colorChipOther">#268E8E93</color>
+
+    <!-- Action pill backgrounds -->
+    <color name="colorSharePill">#1A007AFF</color>
+    <color name="colorRemovePill">#1AFF3B30</color>
+</resources>

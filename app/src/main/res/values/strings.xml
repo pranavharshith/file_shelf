@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">File Shelf</string>
+    <string name="channel_overlay">File shelf overlay</string>
+    <string name="channel_copy">File copy progress</string>
+    <string name="notification_overlay_title">File shelf active</string>
+    <string name="notification_overlay_text">%1$d files staged</string>
+    <string name="action_open_shelf">Open shelf</string>
+    <string name="action_dismiss_all">Dismiss all</string>
+    <string name="copying_file">Copying %1$s…</string>
+    <string name="copy_complete">Added to shelf</string>
+    <string name="copy_failed">Copy failed: %1$s</string>
+    <string name="onboarding_welcome_title">File Shelf</string>
+    <string name="onboarding_welcome_body">Stage files from any app and share them elsewhere without losing your place. Files auto-expire after 24 hours.</string>
+    <string name="onboarding_overlay_title">Display over other apps</string>
+    <string name="onboarding_overlay_body">The floating bubble needs permission to appear on top of other apps while you multitask.</string>
+    <string name="onboarding_notification_title">Notifications</string>
+    <string name="onboarding_notification_body">A small notification keeps the floating shelf visible while files are staged.</string>
+    <string name="onboarding_fgs_title">Background service</string>
+    <string name="onboarding_fgs_body">File Shelf runs a foreground service to keep the floating bubble visible while you move files between apps. No data leaves your device. The service stops when you dismiss the shelf or clear all files.</string>
+    <string name="enable_floating_shelf">Enable floating shelf</string>
+    <string name="grant_permission">Grant permission</string>
+    <string name="continue_label">Continue</string>
+    <string name="skip_for_now">Skip for now</string>
+    <string name="shelf_empty">No files staged</string>
+    <string name="shelf_empty_hint">Share a file from any app and choose File Shelf.</string>
+    <string name="overlay_denied_banner">Enable overlay permission for the floating bubble, or use this screen to manage files.</string>
+    <string name="clear_all">Clear all</string>
+    <string name="share_file">Share</string>
+    <string name="share_selected">Share selected</string>
+    <string name="remove_file">Remove</string>
+    <string name="copy_in_progress">Copying…</string>
+    <string name="drag_hint">Open the destination app, then long-press a file to drag it there. Select multiple files and long-press any selected file to drag them all as a bundle.</string>
+    <string name="drag_file_hint">Long-press to drag to any app</string>
+    <string name="dismiss_zone_hint">Release to dismiss shelf</string>
+    <string name="got_it">Got it</string>
+    
+    <!-- Help Center -->
+    <string name="help_center_title">How to Use File Shelf</string>
+    <string name="help_close">Close</string>
+    
+    <!-- Help Sections -->
+    <string name="help_section_getting_started">Getting Started</string>
+    <string name="help_section_bubble">Using the Bubble</string>
+    <string name="help_section_files">Working with Files</string>
+    <string name="help_section_settings">Settings &amp; Info</string>
+    
+    <!-- Getting Started -->
+    <string name="help_getting_started_title">Adding Files to Shelf</string>
+    <string name="help_getting_started_body">1. Open any app (Gallery, Drive, Messages, etc.)\n2. Find the file you want to stage\n3. Tap Share and select "File Shelf"\n4. File appears on your shelf instantly\n\nYou can add files from multiple apps before sharing them all at once.</string>
+    
+    <!-- Using the Bubble -->
+    <string name="help_bubble_title">The Floating Bubble</string>
+    <string name="help_bubble_body">• Tap the bubble → Opens the shelf panel\n• Drag the bubble → Repositions it on screen\n• Drag to bottom edge → Hides the bubble\n• Badge shows number of staged files\n\nThe bubble appears when you have files and can be toggled from this screen.</string>
+    
+    <!-- Working with Files -->
+    <string name="help_files_title_share">Sharing Files</string>
+    <string name="help_files_share_body">Tap the share icon on any file to open the system share menu. Choose where to send your file.</string>
+    
+    <string name="help_files_title_drag">Drag &amp; Drop</string>
+    <string name="help_files_drag_body">Single File:\n• Long-press any file in the panel\n• Drag to your destination app\n• Release to drop\n\nMultiple Files (Bundle):\n1. Tap "Select all" or select files individually\n2. Long-press any selected file\n3. Drag the bundle to your app\n4. All selected files transfer together</string>
+    
+    <string name="help_files_title_selection">Selection Mode</string>
+    <string name="help_files_selection_body">• Tap "Select all" to select everything\n• Or tap individual files to select them\n• Share or drag icon appears when selected\n• Tap files again to deselect\n\nSelection mode exits after sharing or dragging.</string>
+    
+    <string name="help_files_title_remove">Removing Files</string>
+    <string name="help_files_remove_body">• Tap trash icon to remove a single file\n• Tap "Clear All" to remove everything\n• Confirmation dialog prevents accidents\n\nThe shelf service stops when all files are cleared to save battery.</string>
+    
+    <!-- Settings & Info -->
+    <string name="help_settings_title_expiry">File Expiry</string>
+    <string name="help_settings_expiry_body">Files are automatically removed after 24 hours to keep your device storage clean.\n\nYour files are never uploaded anywhere—everything stays on your device.</string>
+    
+    <string name="help_settings_title_permissions">Permissions</string>
+    <string name="help_settings_permissions_body">Display Over Other Apps:\nRequired for the floating bubble to appear on top of other apps.\n\nNotifications:\nKeeps the shelf visible while files are staged. You can manage this in Android settings.</string>
+    
+    <string name="help_settings_title_rerun">Re-run Setup</string>
+    <string name="help_settings_rerun_body">Tap below to see the first-time setup tutorial again.</string>
+    <string name="help_rerun_setup_button">Re-run First Time Setup</string>
+    <string name="file_count_badge">%1$d</string>
+    <string name="dismiss_panel">Close panel</string>
+    <string name="drag_handle">Drag %1$s</string>
+    <string name="selection_toggle">Select all</string>
+    <string name="selection_cancel">Cancel</string>
+    <string name="selection_empty">Choose files to share or drag together</string>
+    <string name="selection_file">Select %1$s</string>
+    <string name="selection_active_hint">Tap files to select, then long-press one to drag the group</string>
+    <string name="drag_selected">Drag selected</string>
+    <string name="drop_not_accepted">Drop not accepted — try sharing instead</string>
+    <string name="bundle_hint">Long-press to drag bundle</string>
+    <plurals name="more_files_label">
+        <item quantity="one">+%1$d more</item>
+        <item quantity="other">+%1$d more</item>
+    </plurals>
+    <plurals name="file_count_label">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <plurals name="selected_count_label">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+</resources>

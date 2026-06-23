@@ -1,0 +1,20 @@
+/.gradle/
+/build/
+/app/build/
+/local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+*.apk
+*.aab
+
+# Keystore files — NEVER commit these.
+# The release key signs published APKs; exposure means anyone can publish
+# updates that impersonate this app.  Rotate immediately if accidentally committed.
+# Store credentials in local.properties (also gitignored above):
+#   KEYSTORE_PASSWORD=...
+#   KEY_ALIAS=release
+#   KEY_PASSWORD=...
+*.jks
+*.keystore

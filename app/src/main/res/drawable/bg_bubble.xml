@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Outer glow -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#28007AFF" />
+            <corners android:radius="18dp" />
+        </shape>
+    </item>
+    <!-- Glass square -->
+    <item
+        android:bottom="4dp"
+        android:left="4dp"
+        android:right="4dp"
+        android:top="4dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#F0FFFFFF" />
+            <corners android:radius="16dp" />
+            <stroke
+                android:width="1.5dp"
+                android:color="#80007AFF" />
+        </shape>
+    </item>
+</layer-list>

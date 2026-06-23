@@ -1,0 +1,85 @@
+# detekt config for FileShelf.
+# Built upon detekt's default ruleset (buildUponDefaultConfig = true in app/build.gradle.kts).
+# Only deviations from defaults live here.
+
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+complexity:
+  active: true
+  LongMethod:
+    active: true
+    threshold: 80
+  LongParameterList:
+    active: true
+    functionThreshold: 8
+    constructorThreshold: 10
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 20
+  TooManyFunctions:
+    active: false   # Compose files legitimately have many small composables.
+
+style:
+  active: true
+  MagicNumber:
+    active: false   # Animation timings, dp values, alphas — too noisy.
+  ReturnCount:
+    active: true
+    max: 5
+  MaxLineLength:
+    active: true
+    maxLineLength: 140
+  WildcardImport:
+    active: true
+  UnusedPrivateMember:
+    active: true   # Catches vestigial fields like the old dragStateHandler.
+  UnusedParameter:
+    active: true
+    allowedPattern: "ignored|expected|_"
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    functionPattern: "[a-zA-Z][a-zA-Z0-9]*"
+    excludes: ['**/test/**', '**/*Test.kt', '**/androidTest/**']
+  TopLevelPropertyNaming:
+    active: true
+    constantPattern: "[A-Z][_A-Z0-9]*|[a-z][a-zA-Z0-9]*"
+
+empty-blocks:
+  active: true
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+
+performance:
+  active: true
+
+potential-bugs:
+  active: true
+  ImplicitDefaultLocale:
+    active: false   # formatFileSize uses default locale intentionally.
+  UnsafeCallOnNullableType:
+    active: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: false   # We legitimately catch generic Throwable in spring teardown.
+  SwallowedException:
+    active: true
+
+comments:
+  active: false   # We don't enforce KDoc on every public symbol.
+
+formatting:
+  active: true
+  android: true
+  autoCorrect: false
+  Indentation:
+    active: false   # Defer to ktlint; avoid double-reporting.
+  MaximumLineLength:
+    active: false   # Already covered by style.MaxLineLength.

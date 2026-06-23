@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Severity bumps for issues that have actually bitten this codebase. -->
+    <issue id="Recycle"      severity="error" />
+    <issue id="WrongConstant" severity="error" />
+    <issue id="ResourceType"  severity="error" />
+    <issue id="MissingPermission" severity="error" />
+
+    <!-- We deliberately use `OnDragListener` returning true on ACTION_DRAG_STARTED
+         to force OEM ROMs (MIUI/OneUI) to deliver ACTION_DRAG_ENDED reliably.
+         Lint flags this as "you might want to accept the drop"; we don't. -->
+    <issue id="ClickableViewAccessibility" severity="warning" />
+
+    <!-- Compose-related noise we don't care about during CI. -->
+    <issue id="UnusedAttribute" severity="warning" />
+    <issue id="ObsoleteSdkInt" severity="warning" />
+
+    <!-- Don't fail the build for these on first introduction; raise later. -->
+    <issue id="VectorPath" severity="ignore" />
+    <issue id="QueryPermissionsNeeded" severity="ignore" />
+</lint>
