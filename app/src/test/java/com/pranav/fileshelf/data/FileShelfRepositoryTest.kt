@@ -27,7 +27,7 @@ import java.io.File
  * Block bodies (`fun test() { runBlocking { } }`) compile to void.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33])
+@Config(sdk = [33], application = android.app.Application::class)
 class FileShelfRepositoryTest {
 
     private lateinit var context: Context
