@@ -20,6 +20,9 @@ complexity:
     threshold: 20
   TooManyFunctions:
     active: false   # Compose files legitimately have many small composables.
+  LargeClass:
+    active: true
+    threshold: 800  # Complex overlay panels use inheritance-free composition via helper methods.
 
 style:
   active: true
@@ -35,9 +38,6 @@ style:
     active: true
   UnusedPrivateMember:
     active: true   # Catches vestigial fields like the old dragStateHandler.
-  UnusedParameter:
-    active: true
-    allowedPattern: "ignored|expected|_"
 
 naming:
   active: true
@@ -74,12 +74,3 @@ exceptions:
 
 comments:
   active: false   # We don't enforce KDoc on every public symbol.
-
-formatting:
-  active: true
-  android: true
-  autoCorrect: false
-  Indentation:
-    active: false   # Defer to ktlint; avoid double-reporting.
-  MaximumLineLength:
-    active: false   # Already covered by style.MaxLineLength.

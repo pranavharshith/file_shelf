@@ -89,9 +89,7 @@ object FileShelfRepository {
             }
             list.add(file)
             saveAtomic(context, list)
-            withContext(Dispatchers.Main) {
-                _files.value = list
-            }
+            _files.value = list
         }
     }
 
@@ -112,9 +110,7 @@ object FileShelfRepository {
             
             list.removeAll { it.id == id }
             saveAtomic(context, list)
-            withContext(Dispatchers.Main) {
-                _files.value = list
-            }
+            _files.value = list
         }
     }
 
@@ -132,9 +128,7 @@ object FileShelfRepository {
             }
             
             saveAtomic(context, emptyList())
-            withContext(Dispatchers.Main) {
-                _files.value = emptyList()
-            }
+            _files.value = emptyList()
         }
     }
 
@@ -149,9 +143,6 @@ object FileShelfRepository {
     suspend fun cleanupExpired(context: Context) = writeMutex.withLock {
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            // Single read inside the lock — two separate loadInternal() calls
-            // can diverge if another coroutine writes between them, leaving
-            // orphaned JSON entries (deleted from disk but still in metadata).
             val all = loadInternal(context)
             val list = all.filter { now - it.addedAt < TTL_MS }.toMutableList()
             val removed = all.filter { now - it.addedAt >= TTL_MS }
@@ -165,9 +156,7 @@ object FileShelfRepository {
             }
 
             saveAtomic(context, list)
-            withContext(Dispatchers.Main) {
-                _files.value = list
-            }
+            _files.value = list
         }
     }
 

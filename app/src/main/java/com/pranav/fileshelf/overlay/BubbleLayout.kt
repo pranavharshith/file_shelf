@@ -176,8 +176,12 @@ class BubbleLayout(
         // Stop spring animations and snap to the ready scale.
         // SpringAnimation.cancel() is required because animate().cancel() does
         // NOT touch SpringAnimations.
-        try { scaleXSpring.cancel() } catch (_: Throwable) {}
-        try { scaleYSpring.cancel() } catch (_: Throwable) {}
+        try { scaleXSpring.cancel() } catch (e: Throwable) {
+            android.util.Log.w("BubbleLayout", "Failed to cancel scaleXSpring", e)
+        }
+        try { scaleYSpring.cancel() } catch (e: Throwable) {
+            android.util.Log.w("BubbleLayout", "Failed to cancel scaleYSpring", e)
+        }
         scaleX = 1f
         scaleY = 1f
 
@@ -382,7 +386,7 @@ class BubbleLayout(
             snapXSpring?.start()
             snapYSpring?.start()
         } catch (e: Exception) {
-            // Fallback: If snap fails, just set position directly
+            android.util.Log.w("BubbleLayout", "Snap animation failed, falling back to direct position", e)
             onPositionChanged(currentX, currentY)
         }
     }

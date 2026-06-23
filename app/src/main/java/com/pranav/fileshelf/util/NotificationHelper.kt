@@ -1,18 +1,23 @@
 package com.pranav.fileshelf.util
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.pranav.fileshelf.MainActivity
 import com.pranav.fileshelf.R
 import com.pranav.fileshelf.receiver.NotificationActionReceiver
 import com.pranav.fileshelf.service.OverlayService
 
+@SuppressLint("MissingPermission") // Permission checked via canPostNotifications() before every notify()
 object NotificationHelper {
 
     const val CHANNEL_OVERLAY = "file_shelf_overlay"
@@ -59,6 +64,8 @@ object NotificationHelper {
             .build()
 
     fun showCopyProgress(context: Context, jobId: String, fileName: String, progress: Int?) {
+        if (!canPostNotifications(context)) return
+        
         val id = jobId.hashCode()
         val builder = NotificationCompat.Builder(context, CHANNEL_COPY)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -76,6 +83,8 @@ object NotificationHelper {
     }
 
     fun showCopyComplete(context: Context, fileName: String) {
+        if (!canPostNotifications(context)) return
+        
         val notification = NotificationCompat.Builder(context, CHANNEL_COPY)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(context.getString(R.string.copy_complete))
@@ -87,6 +96,8 @@ object NotificationHelper {
     }
 
     fun showCopyError(context: Context, message: String) {
+        if (!canPostNotifications(context)) return
+        
         val notification = NotificationCompat.Builder(context, CHANNEL_COPY)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(context.getString(R.string.copy_failed, message))
@@ -97,6 +108,8 @@ object NotificationHelper {
     }
 
     fun showFileSizeLimitError(context: Context, fileName: String, sizeMB: Long, limitMB: Long) {
+        if (!canPostNotifications(context)) return
+        
         val notification = NotificationCompat.Builder(context, CHANNEL_COPY)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("File too large")
@@ -135,9 +148,22 @@ object NotificationHelper {
 
     fun updateOverlayNotification(context: Context, fileCount: Int) {
         if (fileCount <= 0) return
+        if (!canPostNotifications(context)) return
+        
         NotificationManagerCompat.from(context).notify(
             NOTIFICATION_OVERLAY_ID,
             buildOverlayNotification(context, fileCount)
         )
+    }
+
+    private fun canPostNotifications(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
     }
 }

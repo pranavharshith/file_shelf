@@ -72,23 +72,7 @@ fun HelpCenterSheet(
         sheetState = sheetState,
         containerColor = Background,
         tonalElevation = 0.dp,
-        dragHandle = {
-            // Custom iOS-style drag handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp, bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(36.dp)
-                        .height(5.dp)
-                        .clip(RoundedCornerShape(2.5.dp))
-                        .background(Color(0x33000000))
-                )
-            }
-        }
+        dragHandle = { HelpSheetDragHandle() }
     ) {
         Column(
             modifier = Modifier
@@ -112,117 +96,139 @@ fun HelpCenterSheet(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Getting Started Section
-                HelpSection(
-                    title = stringResource(R.string.help_section_getting_started),
-                    icon = "📚"
-                ) {
-                    HelpItem(
-                        title = stringResource(R.string.help_getting_started_title),
-                        body = stringResource(R.string.help_getting_started_body)
-                    )
-                }
-                
-                // Using the Bubble Section
-                HelpSection(
-                    title = stringResource(R.string.help_section_bubble),
-                    icon = "🫧"
-                ) {
-                    HelpItem(
-                        title = stringResource(R.string.help_bubble_title),
-                        body = stringResource(R.string.help_bubble_body)
-                    )
-                }
-                
-                // Working with Files Section
-                HelpSection(
-                    title = stringResource(R.string.help_section_files),
-                    icon = "📦"
-                ) {
-                    HelpItem(
-                        title = stringResource(R.string.help_files_title_share),
-                        body = stringResource(R.string.help_files_share_body)
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    HelpItem(
-                        title = stringResource(R.string.help_files_title_drag),
-                        body = stringResource(R.string.help_files_drag_body)
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    HelpItem(
-                        title = stringResource(R.string.help_files_title_selection),
-                        body = stringResource(R.string.help_files_selection_body)
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    HelpItem(
-                        title = stringResource(R.string.help_files_title_remove),
-                        body = stringResource(R.string.help_files_remove_body)
-                    )
-                }
-                
-                // Settings & Info Section
-                HelpSection(
-                    title = stringResource(R.string.help_section_settings),
-                    icon = "⚙️"
-                ) {
-                    HelpItem(
-                        title = stringResource(R.string.help_settings_title_expiry),
-                        body = stringResource(R.string.help_settings_expiry_body)
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    HelpItem(
-                        title = stringResource(R.string.help_settings_title_permissions),
-                        body = stringResource(R.string.help_settings_permissions_body)
-                    )
-                    
-                    Spacer(Modifier.height(12.dp))
-                    
-                    // Re-run setup section
-                    Column {
-                        Text(
-                            text = stringResource(R.string.help_settings_title_rerun),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.help_settings_rerun_body),
-                            fontSize = 14.sp,
-                            color = TextSecondary,
-                            lineHeight = 20.sp,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        Button(
-                            onClick = {
-                                onDismiss()
-                                onRerunSetup()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Tint
-                            )
-                        ) {
-                            Text(
-                                text = stringResource(R.string.help_rerun_setup_button),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-                
+                HelpGettingStartedSection()
+                HelpBubbleSection()
+                HelpFilesSection()
+                HelpSettingsSection(onDismiss = onDismiss, onRerunSetup = onRerunSetup)
                 Spacer(Modifier.height(8.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun HelpSheetDragHandle() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .height(5.dp)
+                .clip(RoundedCornerShape(2.5.dp))
+                .background(Color(0x33000000))
+        )
+    }
+}
+
+@Composable
+private fun HelpGettingStartedSection() {
+    HelpSection(
+        title = stringResource(R.string.help_section_getting_started),
+        icon = "📚"
+    ) {
+        HelpItem(
+            title = stringResource(R.string.help_getting_started_title),
+            body = stringResource(R.string.help_getting_started_body)
+        )
+    }
+}
+
+@Composable
+private fun HelpBubbleSection() {
+    HelpSection(
+        title = stringResource(R.string.help_section_bubble),
+        icon = "🫧"
+    ) {
+        HelpItem(
+            title = stringResource(R.string.help_bubble_title),
+            body = stringResource(R.string.help_bubble_body)
+        )
+    }
+}
+
+@Composable
+private fun HelpFilesSection() {
+    HelpSection(
+        title = stringResource(R.string.help_section_files),
+        icon = "📦"
+    ) {
+        HelpItem(
+            title = stringResource(R.string.help_files_title_share),
+            body = stringResource(R.string.help_files_share_body)
+        )
+        Spacer(Modifier.height(12.dp))
+        HelpItem(
+            title = stringResource(R.string.help_files_title_drag),
+            body = stringResource(R.string.help_files_drag_body)
+        )
+        Spacer(Modifier.height(12.dp))
+        HelpItem(
+            title = stringResource(R.string.help_files_title_selection),
+            body = stringResource(R.string.help_files_selection_body)
+        )
+        Spacer(Modifier.height(12.dp))
+        HelpItem(
+            title = stringResource(R.string.help_files_title_remove),
+            body = stringResource(R.string.help_files_remove_body)
+        )
+    }
+}
+
+@Composable
+private fun HelpSettingsSection(onDismiss: () -> Unit, onRerunSetup: () -> Unit) {
+    HelpSection(
+        title = stringResource(R.string.help_section_settings),
+        icon = "⚙️"
+    ) {
+        HelpItem(
+            title = stringResource(R.string.help_settings_title_expiry),
+            body = stringResource(R.string.help_settings_expiry_body)
+        )
+        Spacer(Modifier.height(12.dp))
+        HelpItem(
+            title = stringResource(R.string.help_settings_title_permissions),
+            body = stringResource(R.string.help_settings_permissions_body)
+        )
+        Spacer(Modifier.height(12.dp))
+        HelpRerunSetupBlock(onDismiss = onDismiss, onRerunSetup = onRerunSetup)
+    }
+}
+
+@Composable
+private fun HelpRerunSetupBlock(onDismiss: () -> Unit, onRerunSetup: () -> Unit) {
+    Column {
+        Text(
+            text = stringResource(R.string.help_settings_title_rerun),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        Text(
+            text = stringResource(R.string.help_settings_rerun_body),
+            fontSize = 14.sp,
+            color = TextSecondary,
+            lineHeight = 20.sp,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Button(
+            onClick = {
+                onDismiss()
+                onRerunSetup()
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Tint)
+        ) {
+            Text(
+                text = stringResource(R.string.help_rerun_setup_button),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }

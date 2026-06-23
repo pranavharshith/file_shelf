@@ -204,7 +204,8 @@ private val onboardingSteps = listOf(
     Triple("NT", "Notifications",
         "A small notification keeps the floating shelf visible while files are staged."),
     Triple("OK", "Enable Floating Shelf",
-        "File Shelf runs a lightweight service to keep the bubble visible while you move between apps. It stops the moment you clear your files.")
+        "File Shelf runs a lightweight service to keep the bubble visible while you move between apps. " +
+            "It stops the moment you clear your files.")
 )
 
 @Composable
@@ -237,19 +238,7 @@ private fun OnboardingFlow(
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.padding(bottom = 48.dp)
-            ) {
-                repeat(ONBOARDING_DONE) { index ->
-                    Box(
-                        modifier = Modifier
-                            .size(if (index == step) 20.dp else 6.dp, 6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(if (index == step) Tint else Separator)
-                    )
-                }
-            }
+            OnboardingProgressDots(currentStep = step)
 
             Text(text = icon, fontSize = 40.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(24.dp))
@@ -271,53 +260,111 @@ private fun OnboardingFlow(
             )
             Spacer(Modifier.height(40.dp))
 
-            Button(
-                onClick = {
-                    when (step) {
-                        0 -> onStepChange(1)
-                        1 -> overlayLauncher.launch(PermissionHelper.overlaySettingsIntent(context))
-                        2 -> {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                onStepChange(3)
-                            }
-                        }
-                        3 -> {
-                            PermissionHelper.setFloatingShelfEnabled(context, true)
-                            onComplete()
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(13.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Tint)
-            ) {
-                Text(
-                    text = if (step == 3) "Enable Floating Shelf" else
-                        if (step == 0) "Get Started" else "Grant Permission",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            OnboardingActionButton(
+                step = step,
+                context = context,
+                overlayLauncher = overlayLauncher,
+                notificationLauncher = notificationLauncher,
+                onStepChange = onStepChange,
+                onComplete = onComplete
+            )
 
-            if (step in 1..2) {
-                Spacer(Modifier.height(12.dp))
-                TextButton(onClick = { onStepChange(step + 1) }) {
-                    Text("Skip for now", color = TextSecondary, fontSize = 14.sp)
+            OnboardingSkipButton(step = step, onStepChange = onStepChange, onComplete = onComplete, context = context)
+        }
+    }
+}
+
+@Composable
+private fun OnboardingProgressDots(currentStep: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(bottom = 48.dp)
+    ) {
+        repeat(ONBOARDING_DONE) { index ->
+            Box(
+                modifier = Modifier
+                    .size(
+                        if (index == currentStep) 20.dp else 6.dp,
+                        6.dp
+                    )
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        if (index == currentStep) Tint else Separator
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun OnboardingActionButton(
+    step: Int,
+    context: android.content.Context,
+    overlayLauncher: androidx.activity.result.ActivityResultLauncher<android.content.Intent>,
+    notificationLauncher: androidx.activity.result.ActivityResultLauncher<String>,
+    onStepChange: (Int) -> Unit,
+    onComplete: () -> Unit
+) {
+    Button(
+        onClick = {
+            when (step) {
+                0 -> onStepChange(1)
+                1 -> overlayLauncher.launch(
+                    PermissionHelper.overlaySettingsIntent(context)
+                )
+                2 -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationLauncher.launch(
+                            Manifest.permission.POST_NOTIFICATIONS
+                        )
+                    } else {
+                        onStepChange(3)
+                    }
                 }
-            }
-            if (step == 3) {
-                Spacer(Modifier.height(12.dp))
-                TextButton(onClick = {
-                    PermissionHelper.setFloatingShelfEnabled(context, false)
+                3 -> {
+                    PermissionHelper.setFloatingShelfEnabled(context, true)
                     onComplete()
-                }) {
-                    Text("Skip for now", color = TextSecondary, fontSize = 14.sp)
                 }
             }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(13.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = Tint)
+    ) {
+        Text(
+            text = when (step) {
+                3 -> "Enable Floating Shelf"
+                0 -> "Get Started"
+                else -> "Grant Permission"
+            },
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun OnboardingSkipButton(
+    step: Int,
+    onStepChange: (Int) -> Unit,
+    onComplete: () -> Unit,
+    context: android.content.Context
+) {
+    if (step in 1..2) {
+        Spacer(Modifier.height(12.dp))
+        TextButton(onClick = { onStepChange(step + 1) }) {
+            Text("Skip for now", color = TextSecondary, fontSize = 14.sp)
+        }
+    }
+    if (step == 3) {
+        Spacer(Modifier.height(12.dp))
+        TextButton(onClick = {
+            PermissionHelper.setFloatingShelfEnabled(context, false)
+            onComplete()
+        }) {
+            Text("Skip for now", color = TextSecondary, fontSize = 14.sp)
         }
     }
 }
@@ -335,20 +382,18 @@ private fun ShelfScreen(onRerunSetup: () -> Unit) {
     
     // Check if user has opened help before
     val hasOpenedHelp = remember {
-        context.getSharedPreferences("file_shelf_prefs", android.content.Context.MODE_PRIVATE)
-            .getBoolean("has_opened_help", false)
+        context.getSharedPreferences(
+            "file_shelf_prefs",
+            android.content.Context.MODE_PRIVATE
+        ).getBoolean("has_opened_help", false)
     }
     
-    // Track if overlay service is running via a StateFlow that the service
-    // updates in setInstance() — no polling, no race-prone delay().
     val isBubbleActive by OverlayService.isRunningFlow.collectAsState()
     val hasFiles = files.isNotEmpty()
 
-    // ── Category filter state ─────────────────────────────────────────────────
+    // ── Category filter state
     var selectedCategory by remember { mutableStateOf(FileCategory.ALL) }
 
-    // Auto-reset to ALL if the active category runs out of files
-    // (e.g. user removes the last PDF while "PDFs" is selected)
     LaunchedEffect(files) {
         if (selectedCategory != FileCategory.ALL &&
             files.none { categorizeFile(it.mimeType) == selectedCategory }
@@ -361,20 +406,17 @@ private fun ShelfScreen(onRerunSetup: () -> Unit) {
         if (selectedCategory == FileCategory.ALL) files
         else files.filter { categorizeFile(it.mimeType) == selectedCategory }
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     LaunchedEffect(Unit) { FileShelfRepository.refresh(context) }
     
-    // Help Center Sheet
     if (showHelpSheet) {
         HelpCenterSheet(
             onDismiss = {
                 showHelpSheet = false
-                // Mark help as opened
-                context.getSharedPreferences("file_shelf_prefs", android.content.Context.MODE_PRIVATE)
-                    .edit()
-                    .putBoolean("has_opened_help", true)
-                    .apply()
+                context.getSharedPreferences(
+                    "file_shelf_prefs",
+                    android.content.Context.MODE_PRIVATE
+                ).edit().putBoolean("has_opened_help", true).apply()
             },
             onRerunSetup = onRerunSetup
         )
@@ -383,192 +425,280 @@ private fun ShelfScreen(onRerunSetup: () -> Unit) {
     Scaffold(
         containerColor = Background,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "File Shelf",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = TextPrimary
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Background),
-                actions = {
-                    // Help icon button with subtle badge for first-time users
-                    Box(
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    if (!hasOpenedHelp) Color(0x1A007AFF) 
-                                    else Color(0x0A007AFF)
-                                )
-                                .clickable { 
-                                    showHelpSheet = true
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Info,
-                                contentDescription = "Help",
-                                tint = Tint,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        
-                        // Small blue dot badge for first-time users
-                        if (!hasOpenedHelp) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .align(Alignment.TopEnd)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Tint)
-                            )
-                        }
-                    }
-                    
-                    Spacer(Modifier.width(4.dp))
-                    
-                    // Bubble toggle button - beautiful circular icon button
-                    Box(
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                if (isBubbleActive) Tint.copy(alpha = 0.12f)
-                                else if (hasFiles) Color(0x0A000000)
-                                else Color(0x05000000)
-                            )
-                            .clickable(enabled = hasFiles) {
-                                // No delay needed — isRunningFlow updates the
-                                // moment the service's setInstance() fires.
-                                if (isBubbleActive) {
-                                    OverlayService.stop(context)
-                                } else {
-                                    OverlayService.start(context)
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.BubbleChart,
-                            contentDescription = if (isBubbleActive) "Hide Bubble" else "Show Bubble",
-                            tint = when {
-                                isBubbleActive -> Tint
-                                hasFiles -> TextPrimary
-                                else -> TextSecondary.copy(alpha = 0.3f)
-                            },
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    
-                    if (files.isNotEmpty()) {
-                        Spacer(Modifier.width(4.dp))
-                        TextButton(onClick = {
-                            scope.launch {
-                                // Show confirmation dialog before clearing
-                                showClearAllConfirmation(context) { confirmed ->
-                                    if (confirmed) {
-                                        scope.launch {
-                                            FileShelfRepository.clearAll(context)
-                                            OverlayService.stop(context)
-                                        }
-                                    }
-                                }
-                            }
-                        }) {
-                            Text("Clear all", color = Destructive, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
+            ShelfTopBar(
+                hasOpenedHelp = hasOpenedHelp,
+                onHelpClick = { showHelpSheet = true },
+                isBubbleActive = isBubbleActive,
+                hasFiles = hasFiles,
+                context = context,
+                files = files,
+                scope = scope
             )
         }
     ) { padding ->
-        if (files.isEmpty() && pending.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("FS", fontSize = 40.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Your shelf is empty",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Share a file from any app and choose File Shelf",
-                    fontSize = 14.sp,
-                    color = TextSecondary
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-            ) {
-                CategoryFilterStrip(
-                    files = files,
-                    selected = selectedCategory,
-                    onSelect = { selectedCategory = it }
-                )
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    item { Spacer(Modifier.height(4.dp)) }
-                    items(pending, key = { it.id }) { copy ->
-                        PendingCopyCard(copy)
-                    }
-                    if (filteredFiles.isEmpty() && selectedCategory != FileCategory.ALL) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "No ${selectedCategory.displayName.lowercase()} files",
-                                    fontSize = 14.sp,
-                                    color = TextSecondary
-                                )
+        ShelfContent(
+            files = files,
+            pending = pending,
+            filteredFiles = filteredFiles,
+            selectedCategory = selectedCategory,
+            onSelectCategory = { selectedCategory = it },
+            padding = padding,
+            scope = scope,
+            context = context
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ShelfTopBar(
+    hasOpenedHelp: Boolean,
+    onHelpClick: () -> Unit,
+    isBubbleActive: Boolean,
+    hasFiles: Boolean,
+    context: android.content.Context,
+    files: List<StagedFile>,
+    scope: kotlinx.coroutines.CoroutineScope
+) {
+    TopAppBar(
+        title = {
+            Text(
+                "File Shelf",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = TextPrimary
+            )
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Background),
+        actions = {
+            HelpIconButton(hasOpenedHelp = hasOpenedHelp, onClick = onHelpClick)
+            Spacer(Modifier.width(4.dp))
+            BubbleToggleButton(
+                isBubbleActive = isBubbleActive,
+                hasFiles = hasFiles,
+                context = context
+            )
+            if (files.isNotEmpty()) {
+                Spacer(Modifier.width(4.dp))
+                TextButton(onClick = {
+                    scope.launch {
+                        showClearAllConfirmation(context) { confirmed ->
+                            if (confirmed) {
+                                scope.launch {
+                                    FileShelfRepository.clearAll(context)
+                                    OverlayService.stop(context)
+                                }
                             }
                         }
-                    } else {
-                        items(filteredFiles, key = { it.id }) { file ->
-                            StagedFileCard(
-                                file = file,
-                                onShare = { ShareIntentHelper.launchChooser(context, file) },
-                                onRemove = {
-                                    scope.launch {
-                                        FileShelfRepository.remove(context, file.id)
-                                        if (FileShelfRepository.files.value.isEmpty()) {
-                                            OverlayService.stop(context)
-                                        } else {
-                                            OverlayService.refreshBubble(context)
-                                        }
-                                    }
-                                }
-                            )
-                        }
                     }
-                    item { Spacer(Modifier.height(16.dp)) }
+                }) {
+                    Text(
+                        "Clear all",
+                        color = Destructive,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
+        }
+    )
+}
+
+@Composable
+private fun HelpIconButton(hasOpenedHelp: Boolean, onClick: () -> Unit) {
+    Box(modifier = Modifier.padding(end = 4.dp)) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(
+                    if (!hasOpenedHelp) Color(0x1A007AFF)
+                    else Color(0x0A007AFF)
+                )
+                .clickable { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = "Help",
+                tint = Tint,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        if (!hasOpenedHelp) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .align(Alignment.TopEnd)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Tint)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BubbleToggleButton(
+    isBubbleActive: Boolean,
+    hasFiles: Boolean,
+    context: android.content.Context
+) {
+    Box(
+        modifier = Modifier
+            .padding(end = 8.dp)
+            .size(40.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                if (isBubbleActive) Tint.copy(alpha = 0.12f)
+                else if (hasFiles) Color(0x0A000000)
+                else Color(0x05000000)
+            )
+            .clickable(enabled = hasFiles) {
+                if (isBubbleActive) {
+                    OverlayService.stop(context)
+                } else {
+                    OverlayService.start(context)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.BubbleChart,
+            contentDescription = if (isBubbleActive) "Hide Bubble"
+                else "Show Bubble",
+            tint = when {
+                isBubbleActive -> Tint
+                hasFiles -> TextPrimary
+                else -> TextSecondary.copy(alpha = 0.3f)
+            },
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+@Suppress("detekt:LongParameterList")
+private fun ShelfContent(
+    files: List<StagedFile>,
+    pending: List<PendingCopy>,
+    filteredFiles: List<StagedFile>,
+    selectedCategory: FileCategory,
+    onSelectCategory: (FileCategory) -> Unit,
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context
+) {
+    if (files.isEmpty() && pending.isEmpty()) {
+        ShelfEmptyState(padding = padding)
+    } else {
+        ShelfFileList(
+            files = files,
+            pending = pending,
+            filteredFiles = filteredFiles,
+            selectedCategory = selectedCategory,
+            onSelectCategory = onSelectCategory,
+            padding = padding,
+            scope = scope,
+            context = context
+        )
+    }
+}
+
+@Composable
+private fun ShelfEmptyState(
+    padding: androidx.compose.foundation.layout.PaddingValues
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("FS", fontSize = 40.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Your shelf is empty",
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Share a file from any app and choose File Shelf",
+            fontSize = 14.sp,
+            color = TextSecondary
+        )
+    }
+}
+
+@Composable
+@Suppress("detekt:LongParameterList")
+private fun ShelfFileList(
+    files: List<StagedFile>,
+    pending: List<PendingCopy>,
+    filteredFiles: List<StagedFile>,
+    selectedCategory: FileCategory,
+    onSelectCategory: (FileCategory) -> Unit,
+    padding: androidx.compose.foundation.layout.PaddingValues,
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+    ) {
+        CategoryFilterStrip(
+            files = files,
+            selected = selectedCategory,
+            onSelect = onSelectCategory
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item { Spacer(Modifier.height(4.dp)) }
+            items(pending, key = { it.id }) { copy ->
+                PendingCopyCard(copy)
+            }
+            if (filteredFiles.isEmpty() && selectedCategory != FileCategory.ALL) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No ${selectedCategory.displayName.lowercase()} files",
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    }
+                }
+            } else {
+                items(filteredFiles, key = { it.id }) { file ->
+                    StagedFileCard(
+                        file = file,
+                        onShare = {
+                            ShareIntentHelper.launchChooser(context, file)
+                        },
+                        onRemove = {
+                            scope.launch {
+                                FileShelfRepository.remove(context, file.id)
+                                if (FileShelfRepository.files.value.isEmpty()) {
+                                    OverlayService.stop(context)
+                                } else {
+                                    OverlayService.refreshBubble(context)
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(16.dp)) }
         }
     }
 }

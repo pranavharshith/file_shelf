@@ -20,6 +20,7 @@ import com.pranav.fileshelf.overlay.DismissZoneHintLayout
 import com.pranav.fileshelf.overlay.OverlayBounds
 import com.pranav.fileshelf.overlay.OverlayWindowManager
 import com.pranav.fileshelf.overlay.ShelfPanelLayout
+import com.pranav.fileshelf.overlay.dragin.DragInSpikeLogger
 import com.pranav.fileshelf.util.NotificationHelper
 import com.pranav.fileshelf.util.PermissionHelper
 import kotlinx.coroutines.Dispatchers
@@ -174,6 +175,7 @@ class OverlayService : Service() {
         bubbleView?.visibility = android.view.View.VISIBLE
 
         bubbleView?.setOnDragListener { _, event ->
+            DragInSpikeLogger.logEvent(event)
             when (event.action) {
                 DragEvent.ACTION_DRAG_STARTED -> true
                 DragEvent.ACTION_DRAG_ENDED -> {
@@ -183,6 +185,8 @@ class OverlayService : Service() {
                 else -> false
             }
         }
+
+        DragInSpikeLogger.logWindowAttached(overlayManager.getParams(KEY_BUBBLE))
 
         // Use the StateFlow value (already in memory from the refresh() call in
         // onStartCommand) instead of loadSync(), which reads from disk on the
@@ -309,12 +313,44 @@ class OverlayService : Service() {
     private fun showShelfPanel() {
         if (shelfPanel != null) return
 
-        // Keep bubble visible at reduced opacity as visual anchor for panel expansion
+        // Keep bubble visible at reduced opacity as visual anchor
         bubbleView?.setBubbleVisible(visible = true, animate = false)
         bubbleView?.animate()?.cancel()
         bubbleView?.alpha = 0.3f
 
-        shelfPanel = ShelfPanelLayout(
+        shelfPanel = createShelfPanelLayout()
+
+        val bubbleParams = overlayManager.getParams(KEY_BUBBLE)
+        val bubbleSize = bubbleSizePx()
+        val area = OverlayBounds.usableArea(this)
+        
+        val panelWidth = calculatePanelWidth(area)
+        val maxScrollHeight = calculateScrollHeight(area)
+        shelfPanel!!.setScrollHeight(maxScrollHeight)
+        
+        val panelHeight = WindowManager.LayoutParams.WRAP_CONTENT
+        val (panelX, panelY) = calculatePanelPosition(
+            bubbleParams, panelWidth, area
+        )
+
+        shelfPanel!!.setExpandOrigin(
+            bubbleX = bubbleParams?.x ?: panelX,
+            bubbleY = bubbleParams?.y ?: panelY,
+            bubbleSize = bubbleSize,
+            panelX = panelX,
+            panelY = panelY
+        )
+        shelfPanel!!.bindFiles(FileShelfRepository.files.value)
+
+        overlayManager.addScrim(KEY_SCRIM) { requestShelfPanelClose() }
+        overlayManager.addView(
+            KEY_PANEL, shelfPanel!!, panelWidth, panelHeight, panelX, panelY
+        )
+        isPanelVisible = true
+    }
+
+    private fun createShelfPanelLayout(): ShelfPanelLayout {
+        return ShelfPanelLayout(
             context = this,
             onDismiss = { onPanelDismissed() },
             onClearAll = {
@@ -344,26 +380,27 @@ class OverlayService : Service() {
                 endActiveDragSession(accepted)
             }
         )
+    }
 
-        val bubbleParams = overlayManager.getParams(KEY_BUBBLE)
-        val bubbleSize = bubbleSizePx()
-        val area = OverlayBounds.usableArea(this)
-        
-        // Cap panel width for landscape mode (max 360dp or 88% of width, whichever is smaller)
+    private fun calculatePanelWidth(area: OverlayBounds.UsableArea): Int {
         val maxPanelWidthDp = dp(360)
-        val panelWidth = minOf((area.width * 0.88f).toInt(), maxPanelWidthDp)
-        
-        // Calculate available vertical space and set dynamic scroll height
-        val availableHeight = area.height
-        val headerFooterHeight = dp(160) // Estimated combined height of header + footer + margins
-        val isPortrait = area.height > area.width
-        val maxScrollHeightDp = if (isPortrait) dp(240) else dp(360)  // Shorter in portrait mode
-        val maxScrollHeight = (availableHeight - headerFooterHeight).coerceIn(dp(180), maxScrollHeightDp)
-        
-        shelfPanel!!.setScrollHeight(maxScrollHeight)
-        
-        val panelHeight = WindowManager.LayoutParams.WRAP_CONTENT
+        return minOf((area.width * 0.88f).toInt(), maxPanelWidthDp)
+    }
 
+    private fun calculateScrollHeight(area: OverlayBounds.UsableArea): Int {
+        val headerFooterHeight = dp(160)
+        val isPortrait = area.height > area.width
+        val maxScrollHeightDp = if (isPortrait) dp(240) else dp(360)
+        return (area.height - headerFooterHeight).coerceIn(
+            dp(180), maxScrollHeightDp
+        )
+    }
+
+    private fun calculatePanelPosition(
+        bubbleParams: WindowManager.LayoutParams?,
+        panelWidth: Int,
+        area: OverlayBounds.UsableArea
+    ): Pair<Int, Int> {
         var panelX = bubbleParams?.x ?: area.left + dp(16)
         var panelY = (bubbleParams?.y ?: dp(200)) + dp(72)
 
@@ -372,10 +409,13 @@ class OverlayService : Service() {
         }
         if (panelX < area.left) panelX = area.left
 
-        // Measure the panel to get actual height for proper positioning
         shelfPanel!!.measure(
-            android.view.View.MeasureSpec.makeMeasureSpec(panelWidth, android.view.View.MeasureSpec.EXACTLY),
-            android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
+            android.view.View.MeasureSpec.makeMeasureSpec(
+                panelWidth, android.view.View.MeasureSpec.EXACTLY
+            ),
+            android.view.View.MeasureSpec.makeMeasureSpec(
+                0, android.view.View.MeasureSpec.UNSPECIFIED
+            )
         )
         val actualPanelHeight = shelfPanel!!.measuredHeight
         
@@ -383,28 +423,7 @@ class OverlayService : Service() {
             panelY = (bubbleParams?.y ?: dp(200)) - actualPanelHeight - dp(8)
             if (panelY < area.top) panelY = area.top + dp(8)
         }
-
-        shelfPanel!!.setExpandOrigin(
-            bubbleX = bubbleParams?.x ?: panelX,
-            bubbleY = bubbleParams?.y ?: panelY,
-            bubbleSize = bubbleSize,
-            panelX = panelX,
-            panelY = panelY
-        )
-        shelfPanel!!.bindFiles(FileShelfRepository.files.value)
-
-        overlayManager.addScrim(KEY_SCRIM) { requestShelfPanelClose() }
-        overlayManager.addView(
-            KEY_PANEL,
-            shelfPanel!!,
-            panelWidth,
-            panelHeight,
-            panelX,
-            panelY
-        )
-        // No need to re-add bubble - it's already visible at reduced opacity
-        // This avoids Z-order thrashing and visual flicker
-        isPanelVisible = true
+        return panelX to panelY
     }
 
     private fun onPanelDismissed() {

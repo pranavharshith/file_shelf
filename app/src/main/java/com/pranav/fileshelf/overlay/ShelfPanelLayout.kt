@@ -467,7 +467,35 @@ class ShelfPanelLayout(
 
     private fun createFileRow(file: StagedFile): View {
         val selected = selectedIds.contains(file.id)
-        val row = LinearLayout(context).apply {
+        val row = createRowContainer(selected)
+
+        row.addView(createSelectionBox(file, selected))
+        row.addView(createFileChip(file))
+        row.addView(createFileInfo(file))
+        row.addView(createShareButton(file))
+        row.addView(createRemoveButton(file))
+
+        row.setOnLongClickListener { startDragForRow(it, file) }
+        row.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> animateRowScale(
+                    view, 0.96f,
+                    SpringForce.STIFFNESS_MEDIUM,
+                    SpringForce.DAMPING_RATIO_NO_BOUNCY
+                )
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> animateRowScale(
+                    view, 1f,
+                    SpringForce.STIFFNESS_LOW,
+                    SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+                )
+            }
+            false
+        }
+        return row
+    }
+
+    private fun createRowContainer(selected: Boolean): LinearLayout {
+        return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dpInt(8f), dpInt(10f), dpInt(10f), dpInt(10f))
@@ -475,20 +503,27 @@ class ShelfPanelLayout(
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(14f)
-                setColor(if (selected) Color.parseColor("#182C9EFF") else Color.TRANSPARENT)
+                setColor(
+                    if (selected) Color.parseColor("#182C9EFF")
+                    else Color.TRANSPARENT
+                )
                 if (selected) {
                     setStroke(dpInt(1f), Color.parseColor("#554FC3F7"))
                 }
             }
             isLongClickable = true
         }
+    }
 
-        val selectionBox = SelectionBoxView(context).apply {
+    private fun createSelectionBox(file: StagedFile, selected: Boolean): View {
+        return SelectionBoxView(context).apply {
             isChecked = selected
             accentColor = colorSelectedFill
             borderColor = Color.parseColor("#E6FFFFFF")
             checkColor = Color.WHITE
-            contentDescription = context.getString(R.string.selection_file, file.displayName)
+            contentDescription = context.getString(
+                R.string.selection_file, file.displayName
+            )
             layoutParams = LinearLayout.LayoutParams(dpInt(40f), dpInt(40f)).apply {
                 marginEnd = dpInt(8f)
             }
@@ -499,14 +534,20 @@ class ShelfPanelLayout(
                 toggleSelection(file)
             }
         }
+    }
 
+    private fun createFileChip(file: StagedFile): View {
         val chipSize = dp(36f).toInt()
         val chipBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(9f)
-            setColor(ContextCompat.getColor(context, MimeIconResolver.chipColorRes(file.mimeType)))
+            setColor(
+                ContextCompat.getColor(
+                    context, MimeIconResolver.chipColorRes(file.mimeType)
+                )
+            )
         }
-        val chip = TextView(context).apply {
+        return TextView(context).apply {
             text = MimeIconResolver.emojiFor(file.mimeType)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             gravity = Gravity.CENTER
@@ -515,10 +556,14 @@ class ShelfPanelLayout(
                 marginEnd = dp(10f).toInt()
             }
         }
+    }
 
+    private fun createFileInfo(file: StagedFile): View {
         val info = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                0, LayoutParams.WRAP_CONTENT, 1f
+            ).apply {
                 marginEnd = dp(8f).toInt()
             }
         }
@@ -537,34 +582,29 @@ class ShelfPanelLayout(
         }
         info.addView(nameView)
         info.addView(sizeView)
+        return info
+    }
 
-        val shareBtn = iconActionPill(R.drawable.ic_share_diagonal, R.drawable.bg_action_share) {
+    private fun createShareButton(file: StagedFile): View {
+        return iconActionPill(
+            R.drawable.ic_share_diagonal, R.drawable.bg_action_share
+        ) {
             ShareIntentHelper.launchChooser(context, file)
             if (selectionMode) clearSelection(exitMode = true)
+        }.apply {
+            contentDescription = context.getString(R.string.share_file)
         }
-        shareBtn.contentDescription = context.getString(R.string.share_file)
+    }
 
-        val removeBtn = iconActionPill(R.drawable.ic_remove_x, R.drawable.bg_action_remove) {
+    private fun createRemoveButton(file: StagedFile): View {
+        return iconActionPill(
+            R.drawable.ic_remove_x, R.drawable.bg_action_remove
+        ) {
             onRemove(file)
             selectedIds.remove(file.id)
+        }.apply {
+            contentDescription = context.getString(R.string.remove_file)
         }
-        removeBtn.contentDescription = context.getString(R.string.remove_file)
-
-        row.addView(selectionBox)
-        row.addView(chip)
-        row.addView(info)
-        row.addView(shareBtn)
-        row.addView(removeBtn)
-
-        row.setOnLongClickListener { startDragForRow(it, file) }
-        row.setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> animateRowScale(view, 0.96f, SpringForce.STIFFNESS_MEDIUM, SpringForce.DAMPING_RATIO_NO_BOUNCY)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> animateRowScale(view, 1f, SpringForce.STIFFNESS_LOW, SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
-            }
-            false
-        }
-        return row
     }
 
     private fun startDragForRow(view: View, file: StagedFile): Boolean {

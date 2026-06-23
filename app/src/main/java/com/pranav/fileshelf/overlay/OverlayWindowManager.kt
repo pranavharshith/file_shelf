@@ -14,12 +14,43 @@ class OverlayWindowManager(private val context: Context) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val attachedViews = mutableMapOf<String, View>()
 
-    fun addView(key: String, view: View, width: Int, height: Int, x: Int, y: Int, blurBehind: Boolean = false, watchOutsideTouch: Boolean = false) {
-        removeView(key)
-        val params = createLayoutParams(width, height, x, y, blurBehind, touchable = true, watchOutsideTouch = watchOutsideTouch)
-        windowManager.addView(view, params)
-        view.tag = params
-        attachedViews[key] = view
+    data class ViewConfig(
+        val key: String,
+        val view: View,
+        val width: Int,
+        val height: Int,
+        val x: Int,
+        val y: Int,
+        val blurBehind: Boolean = false,
+        val watchOutsideTouch: Boolean = false
+    )
+
+    fun addView(config: ViewConfig) {
+        removeView(config.key)
+        val params = createLayoutParams(
+            config.width, config.height, config.x, config.y,
+            config.blurBehind, touchable = true,
+            watchOutsideTouch = config.watchOutsideTouch
+        )
+        windowManager.addView(config.view, params)
+        config.view.tag = params
+        attachedViews[config.key] = config.view
+    }
+
+    @Suppress("detekt:LongParameterList")
+    fun addView(
+        key: String,
+        view: View,
+        width: Int,
+        height: Int,
+        x: Int,
+        y: Int,
+        blurBehind: Boolean = false,
+        watchOutsideTouch: Boolean = false
+    ) {
+        addView(
+            ViewConfig(key, view, width, height, x, y, blurBehind, watchOutsideTouch)
+        )
     }
 
     /** Non-interactive overlay (visual only; touches pass through). */

@@ -64,7 +64,7 @@ class FileShelfApp : Application() {
         private var _instance: FileShelfApp? = null
         
         val instance: FileShelfApp
-            get() = _instance ?: throw IllegalStateException(
+            get() = _instance ?: error(
                 "FileShelfApp not initialized. This is a critical bug - onCreate() was not called."
             )
         

@@ -112,16 +112,32 @@ class ShareReceiverActivity : Activity() {
             val results = mutableListOf<Pair<Uri, String?>>()
             val mime = intent.type
 
-            intent.clipData?.let { clip ->
-                for (i in 0 until clip.itemCount) {
-                    clip.getItemAt(i).uri?.let { uri ->
-                        if (results.none { it.first == uri }) {
-                            results.add(uri to mime)
-                        }
-                    }
+            addClipDataUris(intent, mime, results)
+            addSingleStreamUri(intent, mime, results)
+            addMultipleStreamUris(intent, mime, results)
+
+            return results
+        }
+
+        private fun addClipDataUris(
+            intent: Intent,
+            mime: String?,
+            results: MutableList<Pair<Uri, String?>>
+        ) {
+            val clip = intent.clipData ?: return
+            for (i in 0 until clip.itemCount) {
+                val uri = clip.getItemAt(i).uri ?: continue
+                if (results.none { it.first == uri }) {
+                    results.add(uri to mime)
                 }
             }
+        }
 
+        private fun addSingleStreamUri(
+            intent: Intent,
+            mime: String?,
+            results: MutableList<Pair<Uri, String?>>
+        ) {
             val singleStream: Uri? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
             } else {
@@ -131,13 +147,17 @@ class ShareReceiverActivity : Activity() {
             singleStream?.let { uri ->
                 if (results.none { it.first == uri }) results.add(uri to mime)
             }
+        }
 
-            @Suppress("DEPRECATION")
+        @Suppress("DEPRECATION")
+        private fun addMultipleStreamUris(
+            intent: Intent,
+            mime: String?,
+            results: MutableList<Pair<Uri, String?>>
+        ) {
             intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.forEach { uri ->
                 if (results.none { it.first == uri }) results.add(uri to mime)
             }
-
-            return results
         }
     }
 }

@@ -59,15 +59,7 @@ class SplashActivity : Activity() {
 private class SplashAnimationView(context: android.content.Context) : View(context) {
     
     // Animation duration constants (milliseconds)
-    private val ANIMATION_DURATION = 3500L
-    
-    // Colors matching app aesthetic
-    private val COLOR_BACKGROUND = android.graphics.Color.parseColor("#FFFFFF")
-    private val COLOR_GLASS = android.graphics.Color.parseColor("#F5FFFFFF")
-    private val COLOR_BORDER = android.graphics.Color.parseColor("#0F000000")
-    private val COLOR_ACCENT = android.graphics.Color.parseColor("#007AFF")
-    private val COLOR_SHELF = android.graphics.Color.parseColor("#E6E6EB")
-    private val COLOR_TEXT = android.graphics.Color.parseColor("#1C1C1E")
+    private val animationDuration = 3500L
     
     // File card data
     private data class FileCard(
@@ -96,11 +88,11 @@ private class SplashAnimationView(context: android.content.Context) : View(conte
     
     // Paint objects (reusable for performance)
     private val filePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_GLASS
+        color = android.graphics.Color.parseColor("#F5FFFFFF")
         style = Paint.Style.FILL
     }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_BORDER
+        color = android.graphics.Color.parseColor("#0F000000")
         style = Paint.Style.STROKE
         strokeWidth = 2f
     }
@@ -113,23 +105,23 @@ private class SplashAnimationView(context: android.content.Context) : View(conte
         style = Paint.Style.FILL
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_ACCENT
+        color = android.graphics.Color.parseColor("#007AFF")
         textSize = 32f
         typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     private val shelfPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_SHELF
+        color = android.graphics.Color.parseColor("#E6E6EB")
         style = Paint.Style.FILL
     }
     private val brandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_TEXT
+        color = android.graphics.Color.parseColor("#1C1C1E")
         textSize = 56f
         typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
     private val accentDotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = COLOR_ACCENT
+        color = android.graphics.Color.parseColor("#007AFF")
         textSize = 56f
         typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
         textAlign = Paint.Align.LEFT
@@ -145,7 +137,7 @@ private class SplashAnimationView(context: android.content.Context) : View(conte
     private val shelfRect = RectF()
     
     init {
-        setBackgroundColor(COLOR_BACKGROUND)
+        setBackgroundColor(android.graphics.Color.parseColor("#FFFFFF"))
     }
     
     override fun onDraw(canvas: Canvas) {
@@ -281,7 +273,7 @@ private class SplashAnimationView(context: android.content.Context) : View(conte
         // Run all animations together
         val masterSet = AnimatorSet()
         masterSet.playTogether(animators)
-        masterSet.duration = ANIMATION_DURATION
+        masterSet.duration = animationDuration
         masterSet.doOnEnd { onComplete() }
         masterSet.start()
     }
