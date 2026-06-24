@@ -106,8 +106,8 @@
         <item quantity="other">Added %1$d files to shelf</item>
     </plurals>
     <plurals name="drag_in_too_large">
-        <item quantity="one">%1$d file too large for drag (25 MB limit)</item>
-        <item quantity="other">%1$d files too large for drag (25 MB limit)</item>
+        <item quantity="one">%1$d file too large (500 MB limit)</item>
+        <item quantity="other">%1$d files too large (500 MB limit)</item>
     </plurals>
     <string name="drag_in_partial">Added %1$d of %2$d (some failed)</string>
     <string name="drag_in_failed">Drop failed</string>

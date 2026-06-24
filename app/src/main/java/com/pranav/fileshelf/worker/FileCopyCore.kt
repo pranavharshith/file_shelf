@@ -13,13 +13,10 @@ import java.util.UUID
  * The single byte-copy primitive used by every path that adds a file to the
  * shelf:
  *
- *  - [FileCopyWorker]      — system share sheet (`ACTION_SEND`), async,
- *                            surfaces progress notifications, capped at
- *                            [FileShelfRepository.MAX_FILE_BYTES].
- *  - `DroppedClipImporter` — drag-in from another app, synchronous inside the
- *                            `ACTION_DROP` handler so the cross-app URI
- *                            permission window stays open until the bytes
- *                            are on disk, capped at `MAX_DRAG_IMPORT_BYTES`.
+ *  - [FileCopyWorker]                      — system share sheet (`ACTION_SEND`),
+ *                                            async, surfaces progress notifications.
+ *  - `OverlayService.handleReceivedContent` — drag-in from another app via
+ *                                            [android.view.OnReceiveContentListener].
  *
  * Responsibilities:
  *  - Open the source `InputStream` and translate platform errors into
@@ -55,23 +52,11 @@ internal object FileCopyCore {
      *
      *  - [FileCopyWorker] wraps in `withContext(Dispatchers.IO)` for the
      *    async share-sheet path.
-     *  - [DroppedClipImporter.importAsync] wraps its entire per-item walk
-     *    in `withContext(Dispatchers.IO)` for the drag-in path. That call
-     *    site is only safe because it runs inside [DropTrampolineActivity],
-     *    where the URI permission has already been re-issued as an
-     *    Activity-scoped grant via `Intent.FLAG_GRANT_READ_URI_PERMISSION`
-     *    and therefore survives thread switches.
-     *
-     * Historical context: an earlier v1 design ran the drag-in import
-     * synchronously on the main thread inside `ACTION_DROP`, because the
-     * cross-app `DRAG_FLAG_GLOBAL_URI_READ` grant is pinned to the live
-     * drop-event dispatch and does not survive `Dispatchers.IO` from a
-     * Service context. Logcat on 2026-06-24 confirmed:
-     * `openInputStream` on a coroutine IO worker threw
-     * `FileNotFoundException: No content provider: content://...` even
-     * though the provider was clearly installed. The trampoline Activity
-     * solves this by re-parking the grant onto an Activity lifecycle,
-     * which is why FileCopyCore can stay dispatcher-agnostic today.
+     *  - `OverlayService.handleReceivedContent` runs inside an
+     *    `appScope.launch(Dispatchers.IO)` block — the URI permission is
+     *    managed by the platform's [android.view.OnReceiveContentListener]
+     *    and survives thread switches because the grant is issued at the
+     *    process level when the content is delivered via that API.
      */
     suspend fun copy(
         context: Context,

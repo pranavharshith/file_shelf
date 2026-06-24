@@ -49,7 +49,8 @@ class OverlayService : Service() {
     /**
      * Owns the foreign-drag (drag-IN) state machine. Lives for the
      * service lifetime; nulled in onDestroy. See `overlay/dragin/` package.
-     * The byte-copy itself runs in [DropTrampolineActivity], not here.
+     * The byte-copy runs via [handleReceivedContent] on the app coroutine
+     * scope, or via [tryDownloadWebLink] for Drive/Docs web links.
      */
     private var dragInController: DragInController? = null
 

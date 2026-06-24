@@ -1,10 +1,7 @@
 package com.pranav.fileshelf.overlay.dragin
 
-import android.content.ClipData
 import android.content.Context
 import android.util.Log
-import android.widget.Toast
-import com.pranav.fileshelf.R
 
 /**
  * State orchestrator for the foreign-drag (drag-IN) flow.
@@ -14,8 +11,9 @@ import com.pranav.fileshelf.R
  *  - Auto-collapse the shelf panel on drag start (plan §8)
  *  - Tell `BubbleLayout` to render each state
  *
- * The actual byte copy runs inside [BubbleDropReceiverActivity].
- * `OverlayService` owns one instance for its lifetime.
+ * The actual byte copy is handled by [android.view.OnReceiveContentListener]
+ * attached to the bubble in `OverlayService.attachReceiveContentListener`.
+ * `OverlayService` owns one instance of this controller for its lifetime.
  */
 internal class DragInController(
     private val context: Context,
@@ -42,20 +40,6 @@ internal class DragInController(
     fun onHoverExit() {
         if (currentState == DragInState.IDLE) return
         setState(DragInState.RECEIVING)
-    }
-
-    fun onDrop(clip: ClipData) {
-        Log.i(TAG, "onDrop forwarded to trampoline, itemCount=${clip.itemCount}")
-    }
-
-    fun onDropFailed(webLinks: Int, openFailed: Int) {
-        Log.w(TAG, "onDropFailed: webLinks=$webLinks, openFailed=$openFailed")
-        val msg = if (webLinks > 0) {
-            context.getString(R.string.drag_in_web_link)
-        } else {
-            context.getString(R.string.drag_in_failed)
-        }
-        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
     }
 
     fun onDragEnded(accepted: Boolean) {
