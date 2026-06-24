@@ -17,6 +17,7 @@ import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import com.pranav.fileshelf.R
+import com.pranav.fileshelf.overlay.dragin.DragInState
 import kotlin.math.abs
 
 @SuppressLint("ViewConstructor")
@@ -154,6 +155,57 @@ class BubbleLayout(
             visibility = View.VISIBLE
             if (alpha < 0.9f) {
                 alpha = 1f  // Force full opacity if still dimmed
+            }
+        }
+    }
+
+    /**
+     * Apply the foreign-drag-in visual mode. Decoupled from the
+     * touch-feedback springs in onTouchEvent because the Android platform
+     * does NOT deliver touch events to onTouchEvent during an active drag
+     * session — the two code paths therefore can't collide on
+     * [scaleXSpring] / [scaleYSpring].
+     *
+     * Intentionally minimal in v1: just scale + alpha + a haptic tick on
+     * hover. Plan §8 calls out accent ring / count-pill swap / green flash
+     * as polish work; deferred until the spike confirms the underlying
+     * platform behaviour. Cheap to add later once we know which surfaces
+     * actually deliver drag events.
+     */
+    internal fun setDragInState(state: DragInState) {
+        when (state) {
+            DragInState.IDLE -> {
+                scaleXSpring.spring.stiffness = SpringForce.STIFFNESS_LOW
+                scaleXSpring.spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+                scaleYSpring.spring.stiffness = SpringForce.STIFFNESS_LOW
+                scaleYSpring.spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
+                scaleXSpring.animateToFinalPosition(1f)
+                scaleYSpring.animateToFinalPosition(1f)
+                alpha = 1f
+                visibility = View.VISIBLE
+            }
+            DragInState.RECEIVING -> {
+                scaleXSpring.spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+                scaleXSpring.spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                scaleYSpring.spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+                scaleYSpring.spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                scaleXSpring.animateToFinalPosition(1.1f)
+                scaleYSpring.animateToFinalPosition(1.1f)
+                alpha = 1f
+                visibility = View.VISIBLE
+            }
+            DragInState.HOVER -> {
+                scaleXSpring.spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+                scaleXSpring.spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                scaleYSpring.spring.stiffness = SpringForce.STIFFNESS_MEDIUM
+                scaleYSpring.spring.dampingRatio = SpringForce.DAMPING_RATIO_NO_BOUNCY
+                scaleXSpring.animateToFinalPosition(1.25f)
+                scaleYSpring.animateToFinalPosition(1.25f)
+                alpha = 1f
+                visibility = View.VISIBLE
+                // Tick once on hover-enter. CLOCK_TICK is the lightest
+                // built-in haptic — same one used for dismiss-zone entry.
+                performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             }
         }
     }

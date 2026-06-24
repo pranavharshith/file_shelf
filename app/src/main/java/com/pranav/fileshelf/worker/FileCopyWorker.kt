@@ -86,6 +86,13 @@ object FileCopyWorker {
      *  - Once `bytesCopied` crosses [PROGRESS_THRESHOLD_BYTES] AND the
      *    provider gave us a real total size, emit a determinate update
      *    each time the integer-percent value changes.
+     *
+     * FileCopyCore no longer dispatches to `Dispatchers.IO` internally (so
+     * the drag-in path can keep the URI grant alive on the main thread).
+     * We restore that behaviour here because the share-sheet path's URIs
+     * come from Intent.FLAG_GRANT_READ_URI_PERMISSION, which survives
+     * thread switches just fine, and 100 MB share copies must NOT block
+     * whichever thread invoked us.
      */
     private suspend fun copyToShelf(
         context: Context,
@@ -93,11 +100,11 @@ object FileCopyWorker {
         mimeType: String?,
         jobId: String,
         displayName: String
-    ): Result<StagedFile> {
+    ): Result<StagedFile> = withContext(Dispatchers.IO) {
         var lastProgressPercent = -1
         var firstProgressShown = false
 
-        return FileCopyCore.copy(
+        FileCopyCore.copy(
             context = context,
             sourceUri = sourceUri,
             displayName = displayName,

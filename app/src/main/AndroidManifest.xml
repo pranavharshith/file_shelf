@@ -6,6 +6,38 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        Package visibility (Android 11+, API 30+): Our overlay window receives
+        drag-and-drop payloads from ANY app. The transient DRAG_FLAG_GLOBAL_URI_READ
+        grant is supposed to make the source provider visible to us, but on some
+        OEMs (Xiaomi confirmed 2026-06-24) the grant doesn't propagate package
+        visibility to overlay-Service windows. Without this declaration,
+        ContentResolver.openInputStream throws "No content provider" because
+        acquireUnstableProvider returns null — the provider is *invisible*, not
+        *denied*. Declaring broad intent queries makes all file-serving providers
+        discoverable regardless of how the URI was obtained.
+    -->
+    <queries>
+        <!-- Covers any app that can VIEW files (essentially all file managers,
+             galleries, cloud storage apps, browsers). -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <!-- Covers any app that can SEND files (share sources). -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <!-- Explicit packages for the primary drag sources we've tested. -->
+        <package android:name="com.google.android.apps.nbu.files" />
+        <package android:name="com.google.android.apps.docs" />
+        <package android:name="com.google.android.apps.photos" />
+        <package android:name="com.android.providers.media" />
+        <package android:name="com.android.externalstorage" />
+    </queries>
 
     <application
         android:name=".FileShelfApp"

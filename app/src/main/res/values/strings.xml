@@ -99,4 +99,19 @@
         <item quantity="one">%1$d selected</item>
         <item quantity="other">%1$d selected</item>
     </plurals>
+
+    <!-- Drag-in (file dropped onto the bubble from another app). -->
+    <plurals name="drag_in_added">
+        <item quantity="one">Added %1$d file to shelf</item>
+        <item quantity="other">Added %1$d files to shelf</item>
+    </plurals>
+    <plurals name="drag_in_too_large">
+        <item quantity="one">%1$d file too large for drag (25 MB limit)</item>
+        <item quantity="other">%1$d files too large for drag (25 MB limit)</item>
+    </plurals>
+    <string name="drag_in_partial">Added %1$d of %2$d (some failed)</string>
+    <string name="drag_in_failed">Drop failed</string>
+    <string name="drag_in_nothing_imported">Nothing to import</string>
+    <string name="drag_in_web_link">That\'s a web link, not a file. Drag from Photos, Files, or the Drive app file list.</string>
+    <string name="drag_in_web_link_private">File requires sign-in. Use Share \u2192 File Shelf instead.</string>
 </resources>

@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.view.DragEvent
 import android.view.WindowManager
 import com.pranav.fileshelf.FileShelfApp
 import com.pranav.fileshelf.MainActivity
@@ -20,9 +19,13 @@ import com.pranav.fileshelf.overlay.DismissZoneHintLayout
 import com.pranav.fileshelf.overlay.OverlayBounds
 import com.pranav.fileshelf.overlay.OverlayWindowManager
 import com.pranav.fileshelf.overlay.ShelfPanelLayout
+import com.pranav.fileshelf.overlay.dragin.BubbleDropTarget
+import com.pranav.fileshelf.overlay.dragin.DragInController
 import com.pranav.fileshelf.overlay.dragin.DragInSpikeLogger
 import com.pranav.fileshelf.util.NotificationHelper
 import com.pranav.fileshelf.util.PermissionHelper
+import com.pranav.fileshelf.util.queryDisplayName
+import com.pranav.fileshelf.worker.FileCopyCore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class OverlayService : Service() {
 
@@ -41,6 +45,13 @@ class OverlayService : Service() {
     private var isPanelAnimating = false
     private var observeJob: Job? = null
     private var isManuallyActivated = false // Track if user manually activated bubble
+
+    /**
+     * Owns the foreign-drag (drag-IN) state machine. Lives for the
+     * service lifetime; nulled in onDestroy. See `overlay/dragin/` package.
+     * The byte-copy itself runs in [DropTrampolineActivity], not here.
+     */
+    private var dragInController: DragInController? = null
 
     /**
      * True between the moment a drag-and-drop session is initiated from the
@@ -68,6 +79,22 @@ class OverlayService : Service() {
         super.onCreate()
         setInstance(this)
         overlayManager = OverlayWindowManager(this)
+
+        // Build the drag-in controller BEFORE showBubble() (called from
+        // onStartCommand) so the listener wiring inside showBubble can
+        // attach a non-null target. Callbacks fire on the main thread.
+        dragInController = DragInController(
+            context = this,
+            onStateChange = { state ->
+                bubbleView?.setDragInState(state)
+            },
+            onAutoCollapseRequested = {
+                // Plan §8: panel must collapse so the bubble is the only
+                // drop target during a foreign drag. hideShelfPanel() is
+                // synchronous and idempotent.
+                if (isPanelVisible) hideShelfPanel()
+            }
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -121,6 +148,7 @@ class OverlayService : Service() {
         bubbleView = null
         shelfPanel = null
         dismissHintView = null
+        dragInController = null
         isPanelVisible = false
         synchronized(instanceLock) {
             if (_instance == this) setInstance(null)
@@ -174,19 +202,27 @@ class OverlayService : Service() {
         bubbleView?.alpha = 1f
         bubbleView?.visibility = android.view.View.VISIBLE
 
-        bubbleView?.setOnDragListener { _, event ->
-            DragInSpikeLogger.logEvent(event)
-            when (event.action) {
-                DragEvent.ACTION_DRAG_STARTED -> true
-                DragEvent.ACTION_DRAG_ENDED -> {
-                    if (isDragActive) endActiveDragSession(accepted = event.result)
-                    false
+        bubbleView?.setOnDragListener(
+            BubbleDropTarget(
+                controller = dragInController
+                    ?: error("DragInController must be created in onCreate before showBubble"),
+                onOwnDragEnded = { accepted ->
+                    // Own drag-OUT cleanup (preserves prior behaviour: this
+                    // listener was previously inline and only handled the
+                    // own-drag path).
+                    if (isDragActive) endActiveDragSession(accepted = accepted)
                 }
-                else -> false
-            }
-        }
+            )
+        )
 
         DragInSpikeLogger.logWindowAttached(overlayManager.getParams(KEY_BUBBLE))
+
+        // Attach the modern (API 31+) content receiver. This is the API path
+        // that lets a non-Activity window obtain the dropped URI's read
+        // permission. The OnDragListener (BubbleDropTarget) returns false
+        // from ACTION_DROP so the View's default onDragEvent runs and routes
+        // the drop here.
+        attachReceiveContentListener(bubbleView)
 
         // Use the StateFlow value (already in memory from the refresh() call in
         // onStartCommand) instead of loadSync(), which reads from disk on the
@@ -196,6 +232,286 @@ class OverlayService : Service() {
             NotificationHelper.NOTIFICATION_OVERLAY_ID,
             NotificationHelper.buildOverlayNotification(this, count.coerceAtLeast(1))
         )
+    }
+
+    /**
+     * Attaches a [android.view.OnReceiveContentListener] to the bubble for
+     * MIME_TYPES_ALL. This is the API-31+ mechanism by which a view (even
+     * in a non-Activity window) can receive dropped content and have the
+     * platform manage the URI read permission. The view's default
+     * `onDragEvent` invokes this listener on ACTION_DROP when the attached
+     * OnDragListener returns false for that action.
+     *
+     * Note: requires `setOnReceiveContentListener` is API 31+. minSdk is 26,
+     * so we guard with a version check; on < 31 drag-in is unsupported and
+     * users fall back to the share sheet.
+     */
+    private fun attachReceiveContentListener(view: android.view.View?) {
+        if (view == null) return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            android.util.Log.w("OverlayService", "OnReceiveContentListener needs API 31+; drag-in disabled")
+            return
+        }
+        view.setOnReceiveContentListener(arrayOf(
+            "image/*", "video/*", "audio/*", "application/*", "text/*"
+        )) { _, payload ->
+            android.util.Log.i(
+                "FileShelfDragIn.Recv",
+                "OnReceiveContentListener fired: source=${payload.source} clip=${payload.clip.itemCount} items"
+            )
+            handleReceivedContent(payload)
+            // Return null = we consumed everything; nothing falls through.
+            null
+        }
+        // The receiver only fires for views that accept content; focus flags
+        // help the platform route DnD payloads to us.
+        view.isFocusable = true
+        view.isFocusableInTouchMode = true
+        android.util.Log.i("FileShelfDragIn.Recv", "OnReceiveContentListener attached to bubble")
+    }
+
+    /**
+     * Imports every URI in a received [android.view.ContentInfo] payload.
+     * Runs the copy on the app coroutine scope (IO). The platform has
+     * already attached the read permission to our process for the duration
+     * needed to open the stream.
+     *
+     * For web links (https:// from Drive/Docs), attempts an HTTP download
+     * for publicly shared files. Private files that require sign-in are
+     * reported to the user via toast.
+     */
+    private fun handleReceivedContent(payload: android.view.ContentInfo) {
+        val clip = payload.clip
+        val app = application as FileShelfApp
+        app.appScope.launch(Dispatchers.IO) {
+            var imported = 0
+            var webLinkFailed = 0
+            for (i in 0 until clip.itemCount) {
+                val uri = clip.getItemAt(i)?.uri ?: continue
+                val scheme = uri.scheme?.lowercase()
+                if (scheme == "http" || scheme == "https") {
+                    android.util.Log.i("FileShelfDragIn.Recv", "item[$i]: web link detected, attempting download: $uri")
+                    val result = tryDownloadWebLink(uri.toString(), i)
+                    if (result) imported++ else webLinkFailed++
+                    continue
+                }
+                val displayName = try {
+                    contentResolver.queryDisplayName(uri)
+                } catch (_: Exception) { null } ?: "file_${System.currentTimeMillis()}_$i"
+                val mime = try { contentResolver.getType(uri) } catch (_: Exception) { null }
+                android.util.Log.i("FileShelfDragIn.Recv", "item[$i]: importing uri=$uri name=$displayName")
+                val result = FileCopyCore.copy(
+                    context = applicationContext,
+                    sourceUri = uri,
+                    displayName = displayName,
+                    mimeType = mime,
+                    maxBytes = FileShelfRepository.MAX_FILE_BYTES
+                )
+                result.onSuccess {
+                    imported++
+                    android.util.Log.i("FileShelfDragIn.Recv", "item[$i]: SUCCESS -> ${it.localPath}")
+                }.onFailure {
+                    android.util.Log.e("FileShelfDragIn.Recv", "item[$i]: FAILED -> ${it.message}")
+                }
+            }
+            withContext(Dispatchers.Main) {
+                if (imported > 0) {
+                    FileShelfRepository.refresh(applicationContext)
+                    refreshUi()
+                    android.widget.Toast.makeText(
+                        this@OverlayService,
+                        resources.getQuantityString(R.plurals.drag_in_added, imported, imported),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } else if (webLinkFailed > 0) {
+                    android.widget.Toast.makeText(
+                        this@OverlayService,
+                        getString(R.string.drag_in_web_link_private),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    /**
+     * Attempts to download a Google Drive/Docs web link as a file.
+     *
+     * Strategy:
+     *  - Drive file links (`drive.google.com/file/d/{ID}/...`) → direct download URL
+     *  - Drive open links (`drive.google.com/open?id={ID}`) → direct download URL
+     *  - Google Docs/Sheets/Slides (`docs.google.com/.../d/{ID}/...`) → export as PDF
+     *  - Other HTTPS links → attempt direct download as-is
+     *
+     * Returns true if the file was successfully downloaded and added to shelf.
+     * Returns false (never throws) if the download fails for any reason
+     * (private file, network error, redirect to sign-in page, etc.).
+     */
+    private suspend fun tryDownloadWebLink(url: String, index: Int): Boolean {
+        return try {
+            val downloadUrl = resolveDownloadUrl(url)
+            android.util.Log.d("FileShelfDragIn.Recv", "item[$index]: resolved download URL: $downloadUrl")
+
+            val connection = java.net.URL(downloadUrl).openConnection() as java.net.HttpURLConnection
+            connection.instanceFollowRedirects = true
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+
+            try {
+                val responseCode = connection.responseCode
+                android.util.Log.d("FileShelfDragIn.Recv", "item[$index]: HTTP $responseCode")
+
+                if (responseCode != 200) {
+                    android.util.Log.w("FileShelfDragIn.Recv", "item[$index]: HTTP $responseCode — file may be private or require sign-in")
+                    return false
+                }
+
+                // Check if we got redirected to a sign-in page
+                val contentType = connection.contentType ?: ""
+                if (contentType.contains("text/html") && !url.contains("export=download")) {
+                    // Drive returned an HTML page (sign-in or virus scan warning)
+                    // instead of the actual file. The file is private.
+                    android.util.Log.w("FileShelfDragIn.Recv", "item[$index]: got HTML instead of file — likely private/requires sign-in")
+                    return false
+                }
+
+                // Extract filename from Content-Disposition or URL
+                val displayName = extractFilename(connection, url)
+                val mimeType = if (contentType.contains(";")) {
+                    contentType.substringBefore(";").trim()
+                } else {
+                    contentType.ifBlank { "application/octet-stream" }
+                }
+
+                // Stream to shelf
+                val destFile = FileShelfRepository.createDestFile(applicationContext, displayName)
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                var bytesCopied = 0L
+                val buffer = ByteArray(8192)
+                val maxBytes = FileShelfRepository.MAX_FILE_BYTES
+
+                connection.inputStream.use { input ->
+                    destFile.outputStream().use { output ->
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            output.write(buffer, 0, read)
+                            digest.update(buffer, 0, read)
+                            bytesCopied += read
+                            if (bytesCopied > maxBytes) {
+                                destFile.delete()
+                                android.util.Log.w("FileShelfDragIn.Recv", "item[$index]: exceeded size limit")
+                                return false
+                            }
+                        }
+                    }
+                }
+
+                if (bytesCopied == 0L) {
+                    destFile.delete()
+                    android.util.Log.w("FileShelfDragIn.Recv", "item[$index]: zero bytes downloaded")
+                    return false
+                }
+
+                // Dedupe by hash
+                val hash = digest.digest().joinToString("") { "%02x".format(it) }
+                val hashDupe = FileShelfRepository.findByHash(applicationContext, hash)
+                if (hashDupe != null) {
+                    destFile.delete()
+                    android.util.Log.d("FileShelfDragIn.Recv", "item[$index]: dedupe hit (hash)")
+                    return true // Already on shelf
+                }
+
+                val staged = com.pranav.fileshelf.data.StagedFile(
+                    id = java.util.UUID.randomUUID().toString(),
+                    displayName = displayName,
+                    mimeType = mimeType,
+                    localPath = destFile.absolutePath,
+                    sizeBytes = bytesCopied,
+                    sha256 = hash,
+                    addedAt = System.currentTimeMillis()
+                )
+                FileShelfRepository.add(applicationContext, staged)
+                android.util.Log.i("FileShelfDragIn.Recv", "item[$index]: web link SUCCESS -> ${destFile.name} ($bytesCopied bytes)")
+                true
+            } finally {
+                connection.disconnect()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FileShelfDragIn.Recv", "item[$index]: web link download failed: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Converts a Google Drive/Docs web link into a direct download URL.
+     */
+    private fun resolveDownloadUrl(url: String): String {
+        // Google Drive file: https://drive.google.com/file/d/{ID}/view?...
+        val driveFilePattern = Regex("drive\\.google\\.com/file/d/([^/]+)")
+        driveFilePattern.find(url)?.let { match ->
+            val fileId = match.groupValues[1]
+            return "https://drive.google.com/uc?export=download&id=$fileId"
+        }
+
+        // Google Drive open: https://drive.google.com/open?id={ID}
+        val driveOpenPattern = Regex("drive\\.google\\.com/open\\?id=([^&]+)")
+        driveOpenPattern.find(url)?.let { match ->
+            val fileId = match.groupValues[1]
+            return "https://drive.google.com/uc?export=download&id=$fileId"
+        }
+
+        // Google Docs: https://docs.google.com/document/d/{ID}/...
+        val docsPattern = Regex("docs\\.google\\.com/(document|spreadsheets|presentation)/d/([^/]+)")
+        docsPattern.find(url)?.let { match ->
+            val docType = match.groupValues[1]
+            val docId = match.groupValues[2]
+            val exportFormat = when (docType) {
+                "document" -> "pdf"
+                "spreadsheets" -> "xlsx"
+                "presentation" -> "pptx"
+                else -> "pdf"
+            }
+            return "https://docs.google.com/$docType/d/$docId/export?format=$exportFormat"
+        }
+
+        // Fallback: try the URL as-is
+        return url
+    }
+
+    /**
+     * Extracts a reasonable filename from the HTTP response or URL.
+     */
+    private fun extractFilename(connection: java.net.HttpURLConnection, url: String): String {
+        // Try Content-Disposition header first
+        val disposition = connection.getHeaderField("Content-Disposition")
+        if (disposition != null) {
+            val filenamePattern = Regex("filename[*]?=[\"']?(?:UTF-8'')?([^\"';]+)")
+            filenamePattern.find(disposition)?.let { match ->
+                val name = java.net.URLDecoder.decode(match.groupValues[1].trim(), "UTF-8")
+                if (name.isNotBlank()) return name
+            }
+        }
+
+        // Try to get a name from the URL path
+        val path = try { java.net.URL(url).path } catch (_: Exception) { "" }
+        val lastSegment = path.substringAfterLast("/").substringBefore("?")
+        if (lastSegment.isNotBlank() && lastSegment.contains(".")) {
+            return java.net.URLDecoder.decode(lastSegment, "UTF-8")
+        }
+
+        // Fallback with extension from content type
+        val ext = when {
+            connection.contentType?.contains("pdf") == true -> ".pdf"
+            connection.contentType?.contains("jpeg") == true -> ".jpg"
+            connection.contentType?.contains("png") == true -> ".png"
+            connection.contentType?.contains("xlsx") == true -> ".xlsx"
+            connection.contentType?.contains("pptx") == true -> ".pptx"
+            connection.contentType?.contains("docx") == true -> ".docx"
+            else -> ""
+        }
+        return "download_${System.currentTimeMillis()}$ext"
     }
 
     private fun ensureDismissHint() {
@@ -529,6 +845,16 @@ class OverlayService : Service() {
 
     private fun hideShelfPanel() {
         if (!isPanelVisible) return
+        // Cancel any pending long-press / callback timers on the panel before
+        // detaching. Without this, a CheckForLongPress Runnable that was
+        // scheduled during a touch-down will fire AFTER the view is removed
+        // from the window (parent = null) and crash in showContextMenu.
+        // This is triggered by the auto-collapse path: foreign drag starts →
+        // onAutoCollapseRequested → hideShelfPanel, but the user's finger was
+        // still down on a panel child.
+        shelfPanel?.cancelLongPress()
+        shelfPanel?.handler?.removeCallbacksAndMessages(null)
+
         overlayManager.removeView(KEY_SCRIM)
         overlayManager.removeView(KEY_PANEL)
         shelfPanel = null
