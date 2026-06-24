@@ -2,6 +2,7 @@ package com.pranav.fileshelf.worker
 
 import android.content.Context
 import android.net.Uri
+import android.webkit.MimeTypeMap
 import com.pranav.fileshelf.data.FileShelfRepository
 import com.pranav.fileshelf.data.StagedFile
 import java.io.File
@@ -142,12 +143,41 @@ internal object FileCopyCore {
             return Result.success(hashDupe)
         }
 
-        // 7. Register. FileShelfRepository.add takes the write mutex and
+        // 7. Refuse to stage anything provably broken. Catches:
+        //    • Zero-byte payloads (the interrupted-share case — looks fine
+        //      on disk, silently rejected by every downstream receiver).
+        //    • Files whose magic bytes don't match the declared MIME
+        //      (corrupt download claiming to be a JPEG, partial PDF, etc.).
+        //   The drop into another app would otherwise just "do nothing" and
+        //   the user would have no idea why. Better to fail at the gate.
+        val resolvedMime = mimeType
+            ?: resolver.getType(sourceUri)
+            ?: mimeFromExtension(displayName)
+            ?: "application/octet-stream"
+
+        detectCorruption(destFile, resolvedMime, bytesCopied)?.let { reason ->
+            destFile.delete()
+            android.util.Log.w(TAG, "Rejected ${destFile.name}: $reason ($resolvedMime)")
+            return Result.failure(Exception("File appears to be corrupt"))
+        }
+
+        // 8. Register. FileShelfRepository.add takes the write mutex and
         //    atomically persists the JSON before updating the state flow.
+        //
+        // Mime resolution order (computed above for the corruption check):
+        //   1. Caller-supplied (intent's mime, drag-in clip mime)
+        //   2. ContentResolver.getType(uri)
+        //   3. Filename extension via MimeTypeMap
+        //   4. application/octet-stream
+        //
+        // Step 3 is the important one — without it, anything shared from
+        // an app that emits a wildcard mime (file managers, some browsers)
+        // lands as application/octet-stream and shows as a generic "FILE"
+        // chip even when the name is obviously `report.pdf`.
         val staged = StagedFile(
             id = UUID.randomUUID().toString(),
             displayName = displayName,
-            mimeType = mimeType ?: resolver.getType(sourceUri) ?: "application/octet-stream",
+            mimeType = resolvedMime,
             localPath = destFile.absolutePath,
             sizeBytes = bytesCopied,
             sha256 = hash,
@@ -155,6 +185,84 @@ internal object FileCopyCore {
         )
         FileShelfRepository.add(context, staged)
         return Result.success(staged)
+    }
+
+    private fun mimeFromExtension(displayName: String): String? {
+        val ext = displayName.substringAfterLast('.', missingDelimiterValue = "")
+            .lowercase()
+            .takeIf { it.isNotEmpty() } ?: return null
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+    }
+
+    // ── Corruption detection ─────────────────────────────────────────────
+    //
+    // Format sniff is intentionally conservative: only a handful of
+    // high-confidence magic-byte signatures, no decode probes. The point
+    // is to catch the obvious "0 bytes" and "downloaded HTML page named
+    // photo.jpg" cases, not to validate every format on earth. Anything
+    // we can't confidently classify, we pass through.
+
+    private class Magic(val offset: Int, val bytes: ByteArray)
+
+    /**
+     * @return a non-null human-readable reason if the file is corrupt,
+     *         null if it passes (or if we have no signature for this mime).
+     */
+    private fun detectCorruption(destFile: File, resolvedMime: String, bytesCopied: Long): String? {
+        if (bytesCopied == 0L) return "empty"
+
+        val magics = magicForMime(resolvedMime) ?: return null
+        val needed = magics.maxOf { it.offset + it.bytes.size }
+        if (bytesCopied < needed) return "truncated"
+
+        val header = ByteArray(needed)
+        val read = try {
+            destFile.inputStream().use { it.read(header, 0, needed) }
+        } catch (e: Exception) {
+            android.util.Log.w(TAG, "Header read failed for ${destFile.name}: ${e.message}")
+            return "unreadable"
+        }
+        if (read < needed) return "truncated"
+
+        val ok = magics.all { m ->
+            m.bytes.indices.all { i -> header[m.offset + i] == m.bytes[i] }
+        }
+        return if (ok) null else "signature mismatch"
+    }
+
+    private fun magicForMime(mime: String): List<Magic>? = when (mime) {
+        "image/jpeg", "image/jpg" -> listOf(
+            Magic(0, byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()))
+        )
+        "image/png" -> listOf(
+            Magic(0, byteArrayOf(
+                0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
+            ))
+        )
+        "image/gif" -> listOf(
+            // "GIF8" — covers both GIF87a and GIF89a.
+            Magic(0, byteArrayOf(0x47, 0x49, 0x46, 0x38))
+        )
+        "image/webp" -> listOf(
+            Magic(0, byteArrayOf(0x52, 0x49, 0x46, 0x46)), // RIFF
+            Magic(8, byteArrayOf(0x57, 0x45, 0x42, 0x50))  // WEBP
+        )
+        "image/bmp" -> listOf(
+            Magic(0, byteArrayOf(0x42, 0x4D)) // BM
+        )
+        "application/pdf" -> listOf(
+            Magic(0, byteArrayOf(0x25, 0x50, 0x44, 0x46)) // %PDF
+        )
+        // ISO base-media file format family. The brand at offset 8 varies
+        // (heic, heix, mif1, msf1, mp41, mp42, isom, qt, …) so we only
+        // verify the "ftyp" box marker at offset 4. False negatives are
+        // negligible vs the value of catching 0-byte/HTML-pretending-to-be-
+        // video corruption.
+        "video/mp4", "video/quicktime", "video/3gpp",
+        "image/heic", "image/heif" -> listOf(
+            Magic(4, byteArrayOf(0x66, 0x74, 0x79, 0x70)) // "ftyp"
+        )
+        else -> null
     }
 
     /**

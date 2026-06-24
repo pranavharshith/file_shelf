@@ -95,15 +95,34 @@ private val AppColorScheme = lightColorScheme(
     error = Destructive,
 )
 
-private fun chipColor(mimeType: String): Color = when {
+private fun chipColor(mimeType: String, displayName: String = ""): Color {
+    chipColorFromMime(mimeType)?.let { return it }
+    chipColorFromExtension(displayName.substringAfterLast('.', "").lowercase())?.let { return it }
+    return Color(0x268E8E93)
+}
+
+private fun chipColorFromMime(mimeType: String): Color? = when {
     mimeType.contains("pdf") -> Color(0x26FF3B30)
     mimeType.startsWith("image/") -> Color(0x2634C759)
     mimeType.startsWith("video/") -> Color(0x26FF9500)
     mimeType.startsWith("audio/") -> Color(0x26AF52DE)
     mimeType.contains("word") || mimeType.contains("document") ||
         mimeType.contains("sheet") || mimeType.contains("excel") ||
+        mimeType.contains("presentation") || mimeType.contains("powerpoint") ||
         mimeType.startsWith("text/") -> Color(0x26007AFF)
-    else -> Color(0x268E8E93)
+    else -> null
+}
+
+private fun chipColorFromExtension(ext: String): Color? = when (ext) {
+    "pdf" -> Color(0x26FF3B30)
+    "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "tiff", "tif" -> Color(0x2634C759)
+    "mp4", "mkv", "mov", "avi", "webm", "m4v", "3gp", "flv", "wmv" -> Color(0x26FF9500)
+    "mp3", "wav", "flac", "aac", "ogg", "m4a", "opus", "wma" -> Color(0x26AF52DE)
+    "doc", "docx", "odt", "rtf", "pages",
+    "xls", "xlsx", "ods", "csv", "numbers",
+    "ppt", "pptx", "odp", "key",
+    "txt", "md", "log", "json", "xml", "yml", "yaml", "ini", "conf" -> Color(0x26007AFF)
+    else -> null
 }
 
 // ── Category filtering ────────────────────────────────────────────────────────
@@ -120,17 +139,38 @@ private enum class FileCategory(val displayName: String) {
     OTHER("Other")
 }
 
-private fun categorizeFile(mimeType: String): FileCategory = when {
+private fun categorizeFile(mimeType: String, displayName: String = ""): FileCategory {
+    categorizeFromMime(mimeType)?.let { return it }
+    categorizeFromExtension(displayName.substringAfterLast('.', "").lowercase())?.let { return it }
+    return FileCategory.OTHER
+}
+
+private fun categorizeFromMime(mimeType: String): FileCategory? = when {
     mimeType.startsWith("image/")                                          -> FileCategory.IMAGES
     mimeType.startsWith("video/")                                          -> FileCategory.VIDEOS
     mimeType.contains("pdf")                                               -> FileCategory.PDFS
     mimeType.contains("word") || mimeType.contains("document") ||
-        mimeType.contains("sheet") || mimeType.contains("excel")          -> FileCategory.DOCS
+        mimeType.contains("sheet") || mimeType.contains("excel") ||
+        mimeType.contains("presentation") || mimeType.contains("powerpoint") -> FileCategory.DOCS
     mimeType.startsWith("audio/")                                          -> FileCategory.AUDIO
     mimeType.contains("zip")  || mimeType.contains("archive") ||
-        mimeType.contains("tar") || mimeType.contains("rar")              -> FileCategory.ARCHIVES
+        mimeType.contains("tar") || mimeType.contains("rar") ||
+        mimeType.contains("compressed") || mimeType.contains("7z")        -> FileCategory.ARCHIVES
     mimeType.startsWith("text/")                                           -> FileCategory.TEXT
-    else                                                                   -> FileCategory.OTHER
+    else                                                                   -> null
+}
+
+private fun categorizeFromExtension(ext: String): FileCategory? = when (ext) {
+    "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "bmp", "svg", "tiff", "tif" -> FileCategory.IMAGES
+    "mp4", "mkv", "mov", "avi", "webm", "m4v", "3gp", "flv", "wmv" -> FileCategory.VIDEOS
+    "pdf" -> FileCategory.PDFS
+    "doc", "docx", "odt", "rtf", "pages",
+    "xls", "xlsx", "ods", "csv", "numbers",
+    "ppt", "pptx", "odp", "key" -> FileCategory.DOCS
+    "mp3", "wav", "flac", "aac", "ogg", "m4a", "opus", "wma" -> FileCategory.AUDIO
+    "zip", "tar", "gz", "tgz", "bz2", "xz", "rar", "7z" -> FileCategory.ARCHIVES
+    "txt", "md", "log", "json", "xml", "yml", "yaml", "ini", "conf" -> FileCategory.TEXT
+    else -> null
 }
 
 class MainActivity : ComponentActivity() {
@@ -396,7 +436,7 @@ private fun ShelfScreen(onRerunSetup: () -> Unit) {
 
     LaunchedEffect(files) {
         if (selectedCategory != FileCategory.ALL &&
-            files.none { categorizeFile(it.mimeType) == selectedCategory }
+            files.none { categorizeFile(it.mimeType, it.displayName) == selectedCategory }
         ) {
             selectedCategory = FileCategory.ALL
         }
@@ -404,7 +444,7 @@ private fun ShelfScreen(onRerunSetup: () -> Unit) {
 
     val filteredFiles = remember(files, selectedCategory) {
         if (selectedCategory == FileCategory.ALL) files
-        else files.filter { categorizeFile(it.mimeType) == selectedCategory }
+        else files.filter { categorizeFile(it.mimeType, it.displayName) == selectedCategory }
     }
 
     LaunchedEffect(Unit) { FileShelfRepository.refresh(context) }
@@ -753,11 +793,11 @@ private fun StagedFileCard(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(chipColor(file.mimeType)),
+                    .background(chipColor(file.mimeType, file.displayName)),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = MimeIconResolver.emojiFor(file.mimeType),
+                    text = MimeIconResolver.emojiFor(file.mimeType, file.displayName),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -825,7 +865,10 @@ private fun CategoryFilterStrip(
     // Build ordered list of (category → count) for categories that have files
     val categoryCounts = remember(files) {
         val counts = mutableMapOf<FileCategory, Int>()
-        files.forEach { counts[categorizeFile(it.mimeType)] = (counts[categorizeFile(it.mimeType)] ?: 0) + 1 }
+        files.forEach {
+            val cat = categorizeFile(it.mimeType, it.displayName)
+            counts[cat] = (counts[cat] ?: 0) + 1
+        }
         FileCategory.entries
             .filter { it != FileCategory.ALL && counts.containsKey(it) }
             .map { it to counts.getValue(it) }

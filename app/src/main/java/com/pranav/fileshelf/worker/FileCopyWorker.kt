@@ -33,6 +33,14 @@ object FileCopyWorker {
 
     private const val PROGRESS_THRESHOLD_BYTES = 5L * 1024 * 1024
 
+    /**
+     * Anything bigger than this gets the bubble loading spinner. Picked to
+     * roughly correspond to "the user would notice this isn't instant" on
+     * mid-range storage — smaller files complete in well under a second
+     * and don't need a spinner at all.
+     */
+    private const val LARGE_FILE_THRESHOLD_BYTES = 40L * 1024 * 1024
+
     fun enqueue(context: Context, sourceUri: Uri, mimeType: String?) {
         val app = context.applicationContext as FileShelfApp
         val jobId = UUID.randomUUID().toString()
@@ -103,27 +111,52 @@ object FileCopyWorker {
     ): Result<StagedFile> = withContext(Dispatchers.IO) {
         var lastProgressPercent = -1
         var firstProgressShown = false
+        var markedLarge = false
 
-        FileCopyCore.copy(
-            context = context,
-            sourceUri = sourceUri,
-            displayName = displayName,
-            mimeType = mimeType,
-            maxBytes = FileShelfRepository.MAX_FILE_BYTES
-        ) { bytesCopied, totalSize ->
-            if (bytesCopied > PROGRESS_THRESHOLD_BYTES && totalSize != null && totalSize > 0) {
-                val percent = ((bytesCopied * 100) / totalSize).toInt()
-                if (percent != lastProgressPercent) {
-                    lastProgressPercent = percent
-                    withContext(Dispatchers.Main) {
-                        NotificationHelper.showCopyProgress(context, jobId, displayName, percent)
+        try {
+            FileCopyCore.copy(
+                context = context,
+                sourceUri = sourceUri,
+                displayName = displayName,
+                mimeType = mimeType,
+                maxBytes = FileShelfRepository.MAX_FILE_BYTES
+            ) { bytesCopied, totalSize ->
+                // Flip the bubble into loading mode the moment we know this
+                // copy isn't going to be instant. Two trigger paths:
+                //  1. Provider gave a size hint and it's already over the
+                //     threshold — fires on the first chunk.
+                //  2. Provider didn't, but we've physically written more
+                //     than the threshold — fires mid-stream.
+                if (!markedLarge) {
+                    val knownLarge = totalSize != null && totalSize > LARGE_FILE_THRESHOLD_BYTES
+                    val observedLarge = bytesCopied > LARGE_FILE_THRESHOLD_BYTES
+                    if (knownLarge || observedLarge) {
+                        markedLarge = true
+                        FileShelfRepository.incrementLargeCopy()
                     }
                 }
-            } else if (!firstProgressShown && bytesCopied > 0) {
-                firstProgressShown = true
-                withContext(Dispatchers.Main) {
-                    NotificationHelper.showCopyProgress(context, jobId, displayName, null)
+
+                if (bytesCopied > PROGRESS_THRESHOLD_BYTES && totalSize != null && totalSize > 0) {
+                    val percent = ((bytesCopied * 100) / totalSize).toInt()
+                    if (percent != lastProgressPercent) {
+                        lastProgressPercent = percent
+                        withContext(Dispatchers.Main) {
+                            NotificationHelper.showCopyProgress(context, jobId, displayName, percent)
+                        }
+                    }
+                } else if (!firstProgressShown && bytesCopied > 0) {
+                    firstProgressShown = true
+                    withContext(Dispatchers.Main) {
+                        NotificationHelper.showCopyProgress(context, jobId, displayName, null)
+                    }
                 }
+            }
+        } finally {
+            // Always release the refcount we took, even on failure / cancel.
+            // Without this, a failed large copy would leave the spinner
+            // spinning forever.
+            if (markedLarge) {
+                FileShelfRepository.decrementLargeCopy()
             }
         }
     }

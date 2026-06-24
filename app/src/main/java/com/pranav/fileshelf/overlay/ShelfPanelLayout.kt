@@ -543,12 +543,12 @@ class ShelfPanelLayout(
             cornerRadius = dp(9f)
             setColor(
                 ContextCompat.getColor(
-                    context, MimeIconResolver.chipColorRes(file.mimeType)
+                    context, MimeIconResolver.chipColorRes(file.mimeType, file.displayName)
                 )
             )
         }
         return TextView(context).apply {
-            text = MimeIconResolver.emojiFor(file.mimeType)
+            text = MimeIconResolver.emojiFor(file.mimeType, file.displayName)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
             gravity = Gravity.CENTER
             background = chipBg
@@ -740,7 +740,7 @@ class ShelfPanelLayout(
         }
 
         val emoji = TextView(context).apply {
-            text = MimeIconResolver.emojiFor(file.mimeType)
+            text = MimeIconResolver.emojiFor(file.mimeType, file.displayName)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             layoutParams = LinearLayout.LayoutParams(dpInt(32f), dpInt(32f)).apply {
                 marginEnd = dpInt(10f)

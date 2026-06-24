@@ -1,8 +1,12 @@
 package com.pranav.fileshelf.overlay
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.os.Build
 import android.os.SystemClock
 import android.util.TypedValue
@@ -11,6 +15,10 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.dynamicanimation.animation.DynamicAnimation
@@ -52,6 +60,44 @@ class BubbleLayout(
     private val scaleXSpring = SpringAnimation(this, DynamicAnimation.SCALE_X, 1f)
     private val scaleYSpring = SpringAnimation(this, DynamicAnimation.SCALE_Y, 1f)
 
+    // ── Loading spinner state ────────────────────────────────────────────
+    //
+    // Driven by FileShelfRepository.largeCopiesActive via OverlayService.
+    // `loadingAlpha` cross-fades the spinner in/out, `loadingSweepStart`
+    // is the rotating arc angle. The badge text fades to (1 - loadingAlpha)
+    // so they share the bubble face without overlapping at full strength.
+    //
+    // The rotator keeps running for the full fade-out; only stopped after
+    // loadingAlpha lands at 0. Otherwise the arc would visibly freeze
+    // mid-fade.
+    private var isLoading = false
+    private var loadingAlpha = 0f
+    private var loadingSweepStart = 0f
+    private var loadingRotator: ValueAnimator? = null
+    private var loadingFader: ValueAnimator? = null
+    private val loadingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        color = Color.parseColor("#0056CC")
+    }
+    private val loadingRect = RectF()
+
+    // ── Odometer state ───────────────────────────────────────────────────
+    //
+    // `displayedCount` is what the badge text currently shows.
+    // `pendingTargetCount` is the latest value we've been told to display.
+    // Roll transitions move displayed → pending; if more updates arrive
+    // mid-roll, only the latest pending matters — we never tick through
+    // intermediates.
+    //
+    // While `isLoading` is true the badge is faded out behind the spinner
+    // and we deliberately don't animate; the roll is deferred until the
+    // loading fader returns the badge to full opacity.
+    private var displayedCount = 0
+    private var pendingTargetCount = 0
+    private var isCountTransitioning = false
+    private var isFirstCountUpdate = true
+
     private var snapXSpring: SpringAnimation? = null
     private var snapYSpring: SpringAnimation? = null
     private var snapXDone = true
@@ -59,6 +105,9 @@ class BubbleLayout(
 
     init {
         setBackgroundResource(R.drawable.bg_bubble)
+        // FrameLayout suppresses onDraw by default; we need it for the
+        // rotating arc spinner.
+        setWillNotDraw(false)
         val size = dp(64)
         layoutParams = LayoutParams(size, size)
 
@@ -75,15 +124,6 @@ class BubbleLayout(
             typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
             text = "0"
-
-            val badgeScaleX = SpringAnimation(this, DynamicAnimation.SCALE_X, 1f)
-            val badgeScaleY = SpringAnimation(this, DynamicAnimation.SCALE_Y, 1f)
-            badgeScaleX.spring.stiffness = SpringForce.STIFFNESS_MEDIUM
-            badgeScaleY.spring.stiffness = SpringForce.STIFFNESS_MEDIUM
-            badgeScaleX.spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
-            badgeScaleY.spring.dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
-            setTag(R.id.tag_spring_x, badgeScaleX)
-            setTag(R.id.tag_spring_y, badgeScaleY)
         }
         addView(
             badgeView,
@@ -92,9 +132,181 @@ class BubbleLayout(
     }
 
     fun updateCount(count: Int) {
-        badgeView.text = count.toString()
+        pendingTargetCount = count
         contentDescription = context.getString(R.string.file_count_badge, count)
-        animateCountPulse()
+
+        // First display after the bubble appears: snap to the count directly
+        // so the user doesn't see a roll on the initial render.
+        if (isFirstCountUpdate) {
+            isFirstCountUpdate = false
+            displayedCount = count
+            badgeView.text = count.toString()
+            return
+        }
+
+        maybeStartCountRoll()
+    }
+
+    /**
+     * Kicks off the odometer roll if all preconditions are met:
+     *  - We're not showing the loading spinner (badge is faded out behind it).
+     *  - A previous roll isn't still in flight.
+     *  - There's actually a delta to animate.
+     *
+     * Safe to call from anywhere; it self-debounces. The setLoading fader's
+     * end listener calls this so a deferred roll fires once the badge is
+     * visible again.
+     */
+    private fun maybeStartCountRoll() {
+        if (isLoading || loadingAlpha > 0f) return
+        if (isCountTransitioning) return
+        if (displayedCount == pendingTargetCount) return
+        rollCountTo(pendingTargetCount)
+    }
+
+    /**
+     * Vertical flip-clock roll: the old digit accelerates up and fades out,
+     * we swap the text, the new digit decelerates in from below. ~500 ms
+     * total — deliberately unhurried per design intent. Skips intermediates
+     * regardless of delta size: 2 → 18 is a single roll, not 16 ticks.
+     *
+     * If `pendingTargetCount` changes during the roll (more files land
+     * mid-animation), the chain re-fires on completion to chase the new
+     * target. We never queue intermediate rolls.
+     */
+    private fun rollCountTo(target: Int) {
+        isCountTransitioning = true
+
+        // Roll distance is just over half the badge height — far enough that
+        // the text visibly clears the bubble face before alpha hits 0, but
+        // not so far that the animation looks like a jump.
+        val measuredHeight = badgeView.height
+        val rollDistance = if (measuredHeight > 0) {
+            measuredHeight * 0.55f
+        } else {
+            dp(18).toFloat()
+        }
+
+        // Cancel any in-flight ViewPropertyAnimator on the badge so we don't
+        // race the loading fader (which also touches alpha). The fader is
+        // controlled by setLoading; if it becomes active mid-roll, setLoading
+        // resets isCountTransitioning so we don't get stuck.
+        badgeView.animate().cancel()
+
+        badgeView.animate()
+            .translationY(-rollDistance)
+            .alpha(0f)
+            .setDuration(220L)
+            .setInterpolator(AccelerateInterpolator())
+            .withEndAction {
+                // The roll may have been pre-empted by a setLoading(true)
+                // before this end-action ran. If so, just bail; the new
+                // count will be picked up when loading ends.
+                if (isLoading) {
+                    isCountTransitioning = false
+                    return@withEndAction
+                }
+                badgeView.text = target.toString()
+                badgeView.translationY = rollDistance
+                badgeView.animate()
+                    .translationY(0f)
+                    .alpha(1f)
+                    .setDuration(280L)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction {
+                        displayedCount = target
+                        isCountTransitioning = false
+                        // Caught up? Done. Still behind? Chase the latest.
+                        if (displayedCount != pendingTargetCount && !isLoading) {
+                            rollCountTo(pendingTargetCount)
+                        }
+                    }
+                    .start()
+            }
+            .start()
+    }
+
+    /**
+     * Toggle the bubble's loading spinner. Idempotent — calling with the
+     * same value twice is a no-op, so the OverlayService observer can
+     * spam updates without causing flicker.
+     *
+     * When `active` is true the badge text gracefully fades out and a
+     * slow-rotating arc takes its place. When false it cross-fades back.
+     * Multiple concurrent large copies all share one spinner: the refcount
+     * in FileShelfRepository keeps `active` true until the last one finishes.
+     */
+    fun setLoading(active: Boolean) {
+        if (active == isLoading) return
+        isLoading = active
+
+        if (active) {
+            // The odometer roll fights the fader for badge.alpha. Cancel any
+            // in-flight roll so the fader owns the alpha cleanly; the pending
+            // target is preserved and replayed when the spinner clears.
+            badgeView.animate().cancel()
+            isCountTransitioning = false
+        }
+
+        loadingFader?.cancel()
+        loadingFader = ValueAnimator.ofFloat(loadingAlpha, if (active) 1f else 0f).apply {
+            duration = 320L
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { anim ->
+                loadingAlpha = anim.animatedValue as Float
+                // Inverse cross-fade: badge number disappears as arc appears.
+                badgeView.alpha = (1f - loadingAlpha).coerceIn(0f, 1f)
+                invalidate()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    // Stop the rotator only after the fade-out lands at 0.
+                    if (!isLoading && loadingAlpha <= 0f) {
+                        loadingRotator?.cancel()
+                        loadingRotator = null
+                        // Now that the badge is fully visible again, replay
+                        // whatever count updates piled up while it was
+                        // hidden. From the user's POV: spinner stops, the
+                        // count rolls from the old value to the new one.
+                        maybeStartCountRoll()
+                    }
+                }
+            })
+            start()
+        }
+
+        if (active && loadingRotator == null) {
+            // 1400ms per revolution is the "graceful, not hurried" sweet spot.
+            // Linear interpolator keeps the angular velocity constant — an
+            // ease curve would make the spinner visibly hesitate, which
+            // reads as "stuck" to the user.
+            loadingRotator = ValueAnimator.ofFloat(0f, 360f).apply {
+                duration = 1400L
+                interpolator = LinearInterpolator()
+                repeatCount = ValueAnimator.INFINITE
+                addUpdateListener { anim ->
+                    loadingSweepStart = anim.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (loadingAlpha <= 0f) return
+
+        // Slightly thinner stroke + larger inset so the ring reads as a
+        // delicate accent inside the bubble, not a chunky border on it.
+        val strokeWidth = resources.displayMetrics.density * 2.5f
+        loadingPaint.strokeWidth = strokeWidth
+        loadingPaint.alpha = (loadingAlpha * 255f).toInt().coerceIn(0, 255)
+
+        val inset = dp(13).toFloat() + strokeWidth / 2f
+        loadingRect.set(inset, inset, width - inset, height - inset)
+        // Fixed 90° sweep, rotating start angle = classic continuous loader.
+        canvas.drawArc(loadingRect, loadingSweepStart, 90f, false, loadingPaint)
     }
 
     fun setBubbleVisible(visible: Boolean, animate: Boolean = true) {
@@ -121,15 +333,6 @@ class BubbleLayout(
             alpha = targetAlpha
             visibility = if (visible) View.VISIBLE else View.GONE
         }
-    }
-
-    private fun animateCountPulse() {
-        val springX = badgeView.getTag(R.id.tag_spring_x) as? SpringAnimation
-        val springY = badgeView.getTag(R.id.tag_spring_y) as? SpringAnimation
-        badgeView.scaleX = 1.25f
-        badgeView.scaleY = 1.25f
-        springX?.animateToFinalPosition(1f)
-        springY?.animateToFinalPosition(1f)
     }
 
     fun onDragStart() {

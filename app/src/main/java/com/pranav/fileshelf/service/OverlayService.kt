@@ -44,6 +44,7 @@ class OverlayService : Service() {
     private var isPanelVisible = false
     private var isPanelAnimating = false
     private var observeJob: Job? = null
+    private var loadingObserveJob: Job? = null
     private var isManuallyActivated = false // Track if user manually activated bubble
 
     /**
@@ -145,6 +146,7 @@ class OverlayService : Service() {
         stopHandler.removeCallbacks(stopRunnable)
         isDragActive = false
         observeJob?.cancel()
+        loadingObserveJob?.cancel()
         overlayManager.removeAll()
         bubbleView = null
         shelfPanel = null
@@ -579,7 +581,15 @@ class OverlayService : Service() {
                 files to pending
             }.collect { (files, pending) ->
                 val total = files.size + pending.size
-                bubbleView?.updateCount(total)
+                // Bubble shows ONLY the actually-staged count. Pending copies
+                // are represented by the loading spinner instead, so the badge
+                // doesn't tick up prematurely while a large file is still being
+                // written. For small files the copy completes fast enough that
+                // the bump appears instant; for large ones the user sees:
+                //   spinner spins → spinner fades → count smoothly bumps.
+                bubbleView?.updateCount(files.size)
+                // Notification text still uses the total — it has no spinner
+                // to fall back on, so the immediate count is more useful there.
                 NotificationHelper.updateOverlayNotification(
                     this@OverlayService,
                     total.coerceAtLeast(1)
@@ -595,6 +605,15 @@ class OverlayService : Service() {
                 } else {
                     stopHandler.removeCallbacks(stopRunnable)
                 }
+            }
+        }
+
+        // Separate collect for the loading spinner — sharing the combine
+        // block above would re-run the count/notification logic every time
+        // a refcount toggles, which is noisy. Independent, single-purpose.
+        loadingObserveJob = app.appScope.launch(Dispatchers.Main) {
+            FileShelfRepository.largeCopiesActive.collect { count ->
+                bubbleView?.setLoading(count > 0)
             }
         }
     }
@@ -705,12 +724,17 @@ class OverlayService : Service() {
     }
 
     private fun calculateScrollHeight(area: OverlayBounds.UsableArea): Int {
-        val headerFooterHeight = dp(160)
-        val isPortrait = area.height > area.width
-        val maxScrollHeightDp = if (isPortrait) dp(240) else dp(360)
-        return (area.height - headerFooterHeight).coerceIn(
-            dp(180), maxScrollHeightDp
-        )
+        // Real chrome (header + drag hint + 2 separators + footer + padding)
+        // measures out at ~180 dp. The previous estimate of 160 dp was off
+        // enough to push the footer off-screen in landscape.
+        val chromeHeight = dp(180)
+        // Cap total panel at 88% of usable height so the bubble and the
+        // screen edges keep breathing room. In landscape on a typical phone
+        // this works out to ~360 dp total → ~180 dp of scroll. In portrait
+        // there's plenty of room and the dp(360) ceiling kicks in instead.
+        val screenBudget = (area.height * 0.88f).toInt()
+        val scrollMax = (screenBudget - chromeHeight).coerceAtLeast(dp(120))
+        return scrollMax.coerceAtMost(dp(360))
     }
 
     private fun calculatePanelPosition(
@@ -735,11 +759,25 @@ class OverlayService : Service() {
             )
         )
         val actualPanelHeight = shelfPanel!!.measuredHeight
-        
+
+        // Try below the bubble first.
         if (panelY + actualPanelHeight > area.bottom) {
+            // Doesn't fit below — try flipping above.
             panelY = (bubbleParams?.y ?: dp(200)) - actualPanelHeight - dp(8)
             if (panelY < area.top) panelY = area.top + dp(8)
         }
+
+        // Final safety clamp: if neither orientation gave us room (e.g.
+        // landscape where the panel is taller than the bubble's gap to
+        // either edge), force the BOTTOM on screen. Without this the
+        // panel was pinned to area.top + 8 and the footer overflowed
+        // past area.bottom — the original "can't tap the buttons" bug.
+        val bottomOverflow = panelY + actualPanelHeight - area.bottom
+        if (bottomOverflow > 0) {
+            panelY = (panelY - bottomOverflow - dp(8))
+                .coerceAtLeast(area.top + dp(8))
+        }
+
         return panelX to panelY
     }
 

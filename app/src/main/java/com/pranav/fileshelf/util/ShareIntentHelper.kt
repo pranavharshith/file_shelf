@@ -99,7 +99,7 @@ object DragHelper {
         if (files.isEmpty()) return false
         val clip = buildClipData(context, files) ?: return false
         val shadow = if (files.size == 1) {
-            FileDragShadow(view, files.first().displayName, MimeIconResolver.emojiFor(files.first().mimeType))
+            FileDragShadow(view, files.first().displayName, MimeIconResolver.emojiFor(files.first().mimeType, files.first().displayName))
         } else {
             FileDragShadow(view, "${files.size} files", "FILES")
         }

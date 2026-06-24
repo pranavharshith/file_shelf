@@ -26,6 +26,24 @@ object FileShelfRepository {
     private val _pendingCopies = MutableStateFlow<List<PendingCopy>>(emptyList())
     val pendingCopies: StateFlow<List<PendingCopy>> = _pendingCopies.asStateFlow()
 
+    /**
+     * Refcount of in-flight "large" copies — files where the on-disk write
+     * is slow enough that the user would otherwise stare at a stale bubble
+     * count wondering if anything is happening. Drives the bubble's loading
+     * spinner. Refcount (not boolean) so concurrent large copies appear as
+     * one continuous spinner instead of flickering per file.
+     */
+    private val _largeCopiesActive = MutableStateFlow(0)
+    val largeCopiesActive: StateFlow<Int> = _largeCopiesActive.asStateFlow()
+
+    fun incrementLargeCopy() {
+        _largeCopiesActive.value = _largeCopiesActive.value + 1
+    }
+
+    fun decrementLargeCopy() {
+        _largeCopiesActive.value = (_largeCopiesActive.value - 1).coerceAtLeast(0)
+    }
+
     fun shelfDir(context: Context): File {
         val dir = File(context.cacheDir, "shelf")
         if (!dir.exists()) dir.mkdirs()
